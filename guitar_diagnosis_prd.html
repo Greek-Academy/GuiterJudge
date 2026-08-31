@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PRD: ギター上達診断アプリ（仮称）</title>
+<style>
+  :root {
+    --bg: #12141a;
+    --panel: #1c212b;
+    --panel-2: #232936;
+    --border: #383f4f;
+    --text: #f3f4f7;
+    --text-dim: #b7bdcc;
+    --accent: #f2a35f;
+    --accent-soft: rgba(242, 163, 95, 0.18);
+    --good: #7cc99a;
+    --good-soft: rgba(124, 201, 154, 0.14);
+    --bad: #f0847a;
+    --bad-soft: rgba(240, 132, 122, 0.14);
+    --font: "Hiragino Sans", "Yu Gothic UI", "Noto Sans JP", -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    line-height: 1.75;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 0 24px 120px;
+  }
+
+  /* ---- Cover ---- */
+  .cover {
+    padding: 96px 0 56px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 48px;
+  }
+  .cover .kicker {
+    display: inline-block;
+    font-size: 13px;
+    letter-spacing: 0.12em;
+    color: var(--accent);
+    background: var(--accent-soft);
+    padding: 5px 12px;
+    border-radius: 999px;
+    font-weight: 600;
+    margin-bottom: 24px;
+  }
+  .cover h1 {
+    font-size: 40px;
+    line-height: 1.35;
+    margin: 0 0 20px;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+  }
+  .cover .meta {
+    color: var(--text-dim);
+    font-size: 14px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 24px;
+  }
+  .cover .meta span b { color: var(--text); font-weight: 600; }
+
+  /* ---- TOC ---- */
+  .toc {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 28px 32px;
+    margin-bottom: 64px;
+  }
+  .toc h2 {
+    font-size: 13px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin: 0 0 16px;
+  }
+  .toc ol {
+    columns: 2;
+    column-gap: 32px;
+    margin: 0;
+    padding-left: 20px;
+    font-size: 14.5px;
+  }
+  .toc li { margin-bottom: 8px; break-inside: avoid; }
+  .toc a { color: var(--text); text-decoration: none; }
+  .toc a:hover { color: var(--accent); }
+  .toc a .num { color: var(--text-dim); margin-right: 6px; }
+
+  /* ---- Sections ---- */
+  section.slide {
+    scroll-margin-top: 24px;
+    padding: 40px 0 8px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 8px;
+  }
+  section.slide:last-of-type { border-bottom: none; }
+
+  .slide .idx {
+    font-size: 13px;
+    color: var(--accent);
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    margin-bottom: 10px;
+    text-transform: uppercase;
+  }
+  .slide h2 {
+    font-size: 26px;
+    margin: 0 0 20px;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+  }
+  .slide p { color: var(--text); font-size: 15.5px; }
+  .slide .lead {
+    font-size: 17px;
+    color: var(--text);
+    background: var(--panel);
+    border-left: 3px solid var(--accent);
+    padding: 18px 20px;
+    border-radius: 6px;
+  }
+
+  ul.clean, ol.clean {
+    padding-left: 22px;
+    margin: 0;
+  }
+  ul.clean li, ol.clean li {
+    margin-bottom: 12px;
+    font-size: 15.5px;
+  }
+  ol.clean { counter-reset: item; list-style: none; padding-left: 0; }
+  ol.clean li {
+    counter-increment: item;
+    position: relative;
+    padding-left: 40px;
+  }
+  ol.clean li::before {
+    content: counter(item);
+    position: absolute;
+    left: 0;
+    top: -1px;
+    width: 26px;
+    height: 26px;
+    background: var(--accent-soft);
+    color: var(--accent);
+    border-radius: 50%;
+    font-size: 13px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .grid-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 14px;
+    margin-top: 8px;
+  }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px 20px;
+  }
+  .card h3 {
+    font-size: 14.5px;
+    margin: 0 0 8px;
+    color: var(--accent);
+    font-weight: 700;
+  }
+  .card p { margin: 0; font-size: 14px; color: var(--text-dim); }
+
+  /* comparison table */
+  table.compare {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 8px;
+    font-size: 14.5px;
+    overflow: hidden;
+    border-radius: 10px;
+  }
+  table.compare th, table.compare td {
+    padding: 14px 16px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+  }
+  table.compare th {
+    background: var(--panel-2);
+    color: var(--text-dim);
+    font-weight: 600;
+    font-size: 13px;
+    letter-spacing: 0.03em;
+  }
+  table.compare td { background: var(--panel); }
+  table.compare tr:last-child td { border-bottom: none; }
+  table.compare td:first-child, table.compare th:first-child {
+    color: var(--accent);
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .pill-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+  .pill {
+    font-size: 13px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    background: var(--panel);
+  }
+  .pill.bad { color: var(--bad); border-color: rgba(240,132,122,0.45); background: var(--bad-soft); }
+  .pill.good { color: var(--good); border-color: rgba(124,201,154,0.45); background: var(--good-soft); }
+  .pill.accent { color: var(--accent); border-color: rgba(242,163,95,0.45); background: var(--accent-soft); }
+
+  .goal-list li::marker { color: var(--accent); }
+
+  .persona-card {
+    display: flex;
+    gap: 20px;
+    align-items: flex-start;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 24px;
+  }
+  .persona-avatar {
+    flex: 0 0 auto;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: var(--accent-soft);
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    font-weight: 800;
+  }
+  .persona-card p { margin: 0; font-size: 16px; }
+
+  .milestone-track {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    margin-top: 8px;
+  }
+  .m-item {
+    display: flex;
+    gap: 18px;
+    position: relative;
+    padding-bottom: 24px;
+  }
+  .m-item:last-child { padding-bottom: 0; }
+  .m-dot-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .m-dot {
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: var(--accent);
+    flex: 0 0 auto;
+    margin-top: 4px;
+  }
+  .m-line {
+    flex: 1;
+    width: 2px;
+    background: var(--border);
+    margin-top: 4px;
+  }
+  .m-item:last-child .m-line { display: none; }
+  .m-body { padding-bottom: 2px; }
+  .m-title { font-weight: 700; font-size: 15px; margin-bottom: 4px; }
+  .m-title .tag {
+    font-size: 12px;
+    color: var(--accent);
+    background: var(--accent-soft);
+    border-radius: 6px;
+    padding: 2px 8px;
+    margin-right: 8px;
+    font-weight: 700;
+  }
+  .m-desc { font-size: 14px; color: var(--text-dim); }
+
+  .risk-item {
+    display: flex;
+    gap: 12px;
+    padding: 14px 0;
+    border-bottom: 1px dashed var(--border);
+    font-size: 14.5px;
+  }
+  .risk-item:last-child { border-bottom: none; }
+  .risk-icon {
+    flex: 0 0 auto;
+    color: var(--bad);
+    font-weight: 800;
+    font-size: 15px;
+  }
+
+  .metric-box {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+  }
+  .metric-box .label {
+    font-size: 12px;
+    color: var(--text-dim);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+    font-weight: 700;
+  }
+  .metric-box.primary .label { color: var(--accent); }
+  .metric-box p { margin: 0; }
+
+  footer {
+    text-align: center;
+    color: var(--text-dim);
+    font-size: 13px;
+    padding-top: 48px;
+  }
+
+  @media (max-width: 640px) {
+    .cover { padding: 56px 0 40px; }
+    .cover h1 { font-size: 28px; }
+    .toc ol { columns: 1; }
+    .persona-card { flex-direction: column; }
+  }
+
+  @media print {
+    body { max-width: 100%; padding: 0 32px; }
+    section.slide { break-inside: avoid; page-break-inside: avoid; }
+    .toc { break-after: page; }
+  }
+</style>
+</head>
+<body>
+
+  <div class="cover">
+    <span class="kicker">PRD ・ DRAFT</span>
+    <h1>ギター上達診断アプリ（仮称）<br>― 練習に伴走する、診断ファーストの練習アプリ</h1>
+    <div class="meta">
+      <span><b>Status:</b> Draft</span>
+      <span><b>Author:</b> 自分</span>
+      <span><b>Date:</b> 2026-08-14</span>
+    </div>
+  </div>
+
+  <nav class="toc">
+    <h2>Contents</h2>
+    <ol>
+      <li><a href="#tldr"><span class="num">01</span>TL;DR（概要）</a></li>
+      <li><a href="#problem"><span class="num">02</span>課題・背景</a></li>
+      <li><a href="#why-not"><span class="num">03</span>既存アプリとの違い</a></li>
+      <li><a href="#goals"><span class="num">04</span>ゴール（v1）</a></li>
+      <li><a href="#non-goals"><span class="num">05</span>やらないこと（v1）</a></li>
+      <li><a href="#persona"><span class="num">06</span>ターゲットユーザー</a></li>
+      <li><a href="#scenarios"><span class="num">07</span>主要シナリオ</a></li>
+      <li><a href="#solution"><span class="num">08</span>解決アプローチ</a></li>
+      <li><a href="#metrics"><span class="num">09</span>成功指標</a></li>
+      <li><a href="#risks"><span class="num">10</span>リスク・論点</a></li>
+      <li><a href="#milestones"><span class="num">11</span>マイルストーン（6ヶ月）</a></li>
+    </ol>
+  </nav>
+
+  <section class="slide" id="tldr">
+    <div class="idx">01 — 概要（TL;DR）</div>
+    <h2>ひとことで言うと</h2>
+    <p class="lead">
+      独学で伸び悩む社会人ギタリスト向けに、練習中に引っかかるフレーズを「スレッド」として記録し、
+      過去の自分の演奏と比較することで、具体的にどこが停滞しているか・どこが伸びているかを可視化する、
+      <strong>診断ファーストの練習伴走アプリ</strong>。
+    </p>
+  </section>
+
+  <section class="slide" id="problem">
+    <div class="idx">02 — 課題・背景</div>
+    <h2>なぜ今、これが必要か</h2>
+    <div class="grid-cards">
+      <div class="card">
+        <h3>客観視できない</h3>
+        <p>一人で練習しても自分の演奏の良し悪しが客観視できず、上達実感が持てない</p>
+      </div>
+      <div class="card">
+        <h3>練習設計ができない</h3>
+        <p>何を練習すべきか自分で設計できず、なんとなく弾いて終わる</p>
+      </div>
+      <div class="card">
+        <h3>継続できない</h3>
+        <p>継続の仕組みがなく、練習が途切れがち</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide" id="why-not">
+    <div class="idx">03 — 既存アプリとの違い</div>
+    <h2>既存アプリ（Yousician等）との違い</h2>
+    <table class="compare">
+      <thead>
+        <tr><th></th><th>既存アプリ（Yousician等）</th><th>本アプリ</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>アプローチ</td><td>用意されたカリキュラムを消化</td><td>自分の弱点をその場で診断</td></tr>
+        <tr><td>対象</td><td>アプリのライブラリ内の曲</td><td>練習中の何にでも対応</td></tr>
+        <tr><td>進捗の見え方</td><td>ゲーム内スコア・正解率</td><td>自分の過去の演奏との比較</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="slide" id="goals">
+    <div class="idx">04 — ゴール（v1で目指すこと）</div>
+    <h2>v1のゴール</h2>
+    <ol class="clean goal-list">
+      <li><strong>（核）</strong> ユーザーが、自分の練習のどこが伸びていてどこが停滞しているかを具体的に実感できる</li>
+      <li>コード進行の有無・曲か基礎練かソロかを問わず使える</li>
+      <li>スレッド単位の小さな達成の積み上げと、再開時に前回の続きがすぐ分かる設計で、継続のハードルを下げる</li>
+    </ol>
+  </section>
+
+  <section class="slide" id="non-goals">
+    <div class="idx">05 — やらないこと（v1ではやらない）</div>
+    <h2>v1のスコープ外</h2>
+    <div class="pill-row">
+      <span class="pill bad">初心者向けゼロからのフルカリキュラム</span>
+      <span class="pill bad">独自の曲ライブラリ・レッスンコンテンツ拡充</span>
+      <span class="pill bad">コード名の自動判定</span>
+      <span class="pill bad">曲通しの高精度診断（簡易記録に留める）</span>
+      <span class="pill bad">バンド・セッションのマッチング等ソーシャル機能</span>
+      <span class="pill bad">ギター以外の楽器対応</span>
+      <span class="pill bad">通知・リマインド機能</span>
+    </div>
+  </section>
+
+  <section class="slide" id="persona">
+    <div class="idx">06 — ターゲットユーザー</div>
+    <h2>ターゲットユーザー</h2>
+    <div class="persona-card">
+      <div class="persona-avatar">A</div>
+      <p>
+        <strong>Aさん、30代社会人、ギター歴3年、独学。</strong><br>
+        自分の弾きたい曲は弾けるが、上達が頭打ちになっている。
+      </p>
+    </div>
+  </section>
+
+  <section class="slide" id="scenarios">
+    <div class="idx">07 — 主要シナリオ</div>
+    <h2>主要な利用シーン</h2>
+    <ol class="clean">
+      <li>練習中に「ここが引っかかる」と感じたフレーズをスレッドとして作成（曲の一部・基礎練・ソロ、何でも可）</li>
+      <li>そのフレーズを録音 → スレッド内の過去テイクと比較し、安定度・変化を診断</li>
+      <li>安定したらスレッドを「解決済み」に。まだ引っかかるならテイクを積み重ねる</li>
+      <li>アクティブなスレッドは少数に絞り、練習の焦点を保つ（具体的な上限は検証して決める）</li>
+      <li>曲を通しで弾いた場合は「曲通しスレッド」として、完走回数・所要時間程度の簡易ログのみ記録する</li>
+      <li>しばらく開いていなかったスレッドを再開する際は、前回の診断結果からすぐ続けられる</li>
+    </ol>
+  </section>
+
+  <section class="slide" id="solution">
+    <div class="idx">08 — 解決アプローチ</div>
+    <h2>アプローチ</h2>
+    <div class="grid-cards">
+      <div class="card">
+        <h3>コアループ</h3>
+        <p>フレーズスレッド内の複数テイクを自己比較し、ズレ・安定度の変化を検出する</p>
+      </div>
+      <div class="card">
+        <h3>技術方針</h3>
+        <p>外部の「正解」（コード進行・タブ譜・曲データベース）は不要。既存の音声解析技術を活用し、ゼロから高難度な認識技術を開発するリスクは避ける</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide" id="metrics">
+    <div class="idx">09 — 成功指標</div>
+    <h2>成功指標</h2>
+    <div class="grid-cards">
+      <div class="metric-box primary">
+        <div class="label">Primary</div>
+        <p>4週間後の週1回以上の練習ログ継続率<br>
+        <span style="color:var(--text-dim); font-size:13.5px;">（目標値はベースラインがないため未設定。ユーザーテスト後に設定する）</span></p>
+      </div>
+      <div class="metric-box">
+        <div class="label">Secondary</div>
+        <p>解決済みスレッド数（ユーザーあたり）／診断機能の利用率／上達実感アンケートスコア</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide" id="risks">
+    <div class="idx">10 — リスク・未解決の論点</div>
+    <h2>リスク・未解決の論点</h2>
+    <div>
+      <div class="risk-item">
+        <span class="risk-icon">!</span>
+        <span>自己比較が、録音環境・機材が毎回揃わない自宅録音・下手な演奏でどこまで実用的か → <strong>M1で技術検証必須</strong></span>
+      </div>
+      <div class="risk-item">
+        <span class="risk-icon">!</span>
+        <span>和音（ストローク）と単音（フレーズ・ソロ）とで、自己比較の判定精度に差が出る可能性がある → <strong>M1の技術検証で確認</strong></span>
+      </div>
+      <div class="risk-item">
+        <span class="risk-icon">!</span>
+        <span>スレッドの粒度をユーザーが迷わず区切れるUXになるか</span>
+      </div>
+      <div class="risk-item">
+        <span class="risk-icon">!</span>
+        <span>アクティブスレッド数を絞る設計が、逆にニーズを阻害しないか</span>
+      </div>
+      <div class="risk-item">
+        <span class="risk-icon">!</span>
+        <span>ユーザーテストの母数が自分一人に留まる可能性があり、結果の客観性に限界がある</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide" id="milestones">
+    <div class="idx">11 — マイルストーン（6ヶ月）</div>
+    <h2>おおまかなマイルストーン</h2>
+    <div class="milestone-track">
+      <div class="m-item">
+        <div class="m-dot-col"><div class="m-dot"></div><div class="m-line"></div></div>
+        <div class="m-body">
+          <div class="m-title"><span class="tag">M1</span>技術検証</div>
+          <div class="m-desc">自己比較の精度を検証する</div>
+        </div>
+      </div>
+      <div class="m-item">
+        <div class="m-dot-col"><div class="m-dot"></div><div class="m-line"></div></div>
+        <div class="m-body">
+          <div class="m-title"><span class="tag">M2–3</span>MVP開発</div>
+          <div class="m-desc">フレーズスレッド作成・録音・比較診断の最小ループ</div>
+        </div>
+      </div>
+      <div class="m-item">
+        <div class="m-dot-col"><div class="m-dot"></div><div class="m-line"></div></div>
+        <div class="m-body">
+          <div class="m-title"><span class="tag">M4</span>曲通しスレッド追加</div>
+          <div class="m-desc">簡易記録機能の追加、UI/UX調整</div>
+        </div>
+      </div>
+      <div class="m-item">
+        <div class="m-dot-col"><div class="m-dot"></div><div class="m-line"></div></div>
+        <div class="m-body">
+          <div class="m-title"><span class="tag">M5</span>小規模ユーザーテスト・改善</div>
+          <div class="m-desc">自分が主なテストユーザーになる可能性が高く、可能な範囲で周囲にも依頼する</div>
+        </div>
+      </div>
+      <div class="m-item">
+        <div class="m-dot-col"><div class="m-dot"></div></div>
+        <div class="m-body">
+          <div class="m-title"><span class="tag">M6</span>成果まとめ・報告</div>
+          <div class="m-desc"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    PRD: ギター上達診断アプリ（仮称） ・ Draft ・ 2026-08-14
+  </footer>
+
+</body>
+</html>

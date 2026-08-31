@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ギター上達診断アプリ（モック）</title>
+<style>
+  /* ---- palette (light mode only — quick mock, dark mode omitted) ---- */
+  :root {
+    --surface-1:      #fcfcfb;
+    --page:           #f9f9f7;
+    --text-primary:   #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted:     #898781;
+    --gridline:       #e1e0d9;
+    --baseline:       #c3c2b7;
+    --border:         rgba(11,11,11,0.10);
+    --series-1:       #2a78d6; /* blue: stability trend */
+    --status-good:    #0ca30c;
+    --status-warning: #fab219;
+    --status-serious: #ec835a;
+    --status-critical:#d03b3b;
+    --success-text:   #006300;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: var(--page);
+    color: var(--text-primary);
+    display: flex;
+    justify-content: center;
+    padding: 24px 12px;
+  }
+  .phone {
+    width: 390px;
+    max-width: 100%;
+    background: var(--surface-1);
+    border-radius: 28px;
+    border: 1px solid var(--border);
+    box-shadow: 0 8px 30px rgba(11,11,11,0.08);
+    overflow: hidden;
+    min-height: 760px;
+    display: flex;
+    flex-direction: column;
+  }
+  .topbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 16px 16px 12px;
+    border-bottom: 1px solid var(--gridline);
+  }
+  .topbar h1 {
+    font-size: 16px;
+    font-weight: 600;
+    margin: 0;
+    flex: 1;
+  }
+  .back-btn {
+    border: none;
+    background: none;
+    font-size: 14px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 4px 6px;
+  }
+  .screen { display: none; flex-direction: column; flex: 1; overflow-y: auto; }
+  .screen.active { display: flex; }
+
+  .section-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: none;
+    margin: 18px 16px 8px;
+    letter-spacing: .02em;
+  }
+
+  /* --- thread list --- */
+  .thread-card {
+    margin: 0 12px 10px;
+    padding: 12px 14px;
+    background: var(--surface-1);
+    border: 1px solid var(--gridline);
+    border-radius: 14px;
+    cursor: pointer;
+    transition: border-color .15s;
+  }
+  .thread-card:hover { border-color: var(--baseline); }
+  .thread-card .row { display: flex; align-items: center; gap: 10px; }
+  .thread-card .title { font-size: 14px; font-weight: 600; flex: 1; }
+  .badge {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: rgba(10,163,10,0.10);
+    color: var(--success-text);
+    white-space: nowrap;
+  }
+  .badge.muted { background: var(--gridline); color: var(--text-muted); }
+  .meta-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 8px;
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+  .meta-row .spark { margin-left: auto; }
+  .score-tile { text-align: right; }
+  .score-tile .val { font-size: 15px; font-weight: 600; }
+  .score-tile .lbl { font-size: 10px; color: var(--text-muted); }
+
+  .new-thread-btn {
+    margin: 14px 16px 4px;
+    padding: 10px;
+    border: 1px dashed var(--baseline);
+    border-radius: 12px;
+    background: none;
+    color: var(--text-secondary);
+    font-size: 13px;
+    cursor: pointer;
+  }
+
+  .songthrough-row {
+    display: flex;
+    align-items: center;
+    margin: 0 12px 10px;
+    padding: 10px 14px;
+    border: 1px solid var(--gridline);
+    border-radius: 14px;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  .songthrough-row .title { flex: 1; font-weight: 600; }
+  .songthrough-row .count { color: var(--text-muted); font-size: 11px; }
+
+  /* --- thread detail / record --- */
+  .record-hero {
+    margin: 16px;
+    padding: 20px;
+    border-radius: 16px;
+    background: linear-gradient(180deg, rgba(42,120,214,0.06), rgba(42,120,214,0.01));
+    border: 1px solid var(--gridline);
+    text-align: center;
+  }
+  .record-btn {
+    margin-top: 10px;
+    width: 68px; height: 68px;
+    border-radius: 50%;
+    background: var(--series-1);
+    border: none;
+    color: white;
+    font-size: 22px;
+    cursor: pointer;
+  }
+  .record-hint { font-size: 11px; color: var(--text-muted); margin-top: 8px; }
+
+  .take-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0 16px 8px;
+    padding: 10px 12px;
+    border: 1px solid var(--gridline);
+    border-radius: 12px;
+    cursor: pointer;
+    font-size: 12px;
+  }
+  .take-row .date { flex: 1; color: var(--text-secondary); }
+  .take-row .dur { color: var(--text-muted); }
+  .delta-up { color: var(--success-text); font-weight: 600; }
+  .delta-down { color: var(--status-critical); font-weight: 600; }
+
+  .resolve-btn {
+    margin: 14px 16px;
+    padding: 10px;
+    border-radius: 12px;
+    border: 1px solid var(--gridline);
+    background: var(--surface-1);
+    color: var(--text-secondary);
+    font-size: 13px;
+    cursor: pointer;
+  }
+
+  /* --- diagnosis view --- */
+  .compare-toggle {
+    display: flex;
+    gap: 6px;
+    margin: 14px 16px 4px;
+  }
+  .pill {
+    flex: 1;
+    text-align: center;
+    padding: 7px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--gridline);
+    font-size: 11px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    background: var(--surface-1);
+  }
+  .pill.active {
+    background: var(--series-1);
+    border-color: var(--series-1);
+    color: white;
+  }
+
+  .stat-hero {
+    margin: 16px 16px 4px;
+    padding: 16px;
+    border: 1px solid var(--gridline);
+    border-radius: 16px;
+  }
+  .stat-hero .lbl { font-size: 11px; color: var(--text-muted); }
+  .stat-hero .val { font-size: 40px; font-weight: 600; line-height: 1.1; margin-top: 2px; }
+  .stat-hero .delta { font-size: 12px; margin-top: 4px; font-weight: 600; }
+  .stat-hero .spark-wrap { margin-top: 10px; }
+
+  .metric-grid {
+    display: flex;
+    gap: 8px;
+    margin: 10px 16px;
+  }
+  .metric {
+    flex: 1;
+    padding: 10px;
+    border: 1px solid var(--gridline);
+    border-radius: 12px;
+  }
+  .metric .lbl { font-size: 10px; color: var(--text-muted); }
+  .metric .val { font-size: 16px; font-weight: 600; margin-top: 2px; }
+
+  .timeline-wrap { margin: 14px 16px; }
+  .timeline-title { font-size: 11px; color: var(--text-muted); margin-bottom: 6px; }
+  .timeline-track {
+    position: relative;
+    height: 34px;
+    border-radius: 8px;
+    background: var(--gridline);
+    overflow: hidden;
+  }
+  .timeline-seg {
+    position: absolute;
+    top: 2px; bottom: 2px;
+    border-radius: 4px;
+  }
+  .legend-row {
+    display: flex;
+    gap: 14px;
+    margin-top: 8px;
+    font-size: 11px;
+    color: var(--text-secondary);
+  }
+  .legend-row .dot {
+    display: inline-block;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    margin-right: 5px;
+  }
+
+  .songlog-row {
+    display: flex;
+    margin: 0 16px 8px;
+    padding: 10px 12px;
+    border: 1px solid var(--gridline);
+    border-radius: 12px;
+    font-size: 12px;
+  }
+  .songlog-row .date { flex: 1; color: var(--text-secondary); }
+  .songlog-row .dur { color: var(--text-muted); }
+  .log-btn {
+    margin: 14px 16px;
+    padding: 12px;
+    border-radius: 12px;
+    border: none;
+    background: var(--series-1);
+    color: white;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .mock-note {
+    margin: 10px 16px 18px;
+    font-size: 10px;
+    color: var(--text-muted);
+    line-height: 1.5;
+  }
+</style>
+</head>
+<body>
+<div class="phone">
+
+  <!-- ============ SCREEN 1: スレッド一覧 ============ -->
+  <section class="screen active" data-screen="list">
+    <div class="topbar"><h1>ギター上達診断</h1></div>
+    <div style="overflow-y:auto;">
+      <div class="section-title">アクティブなスレッド</div>
+      <div id="active-threads"></div>
+      <button class="new-thread-btn" onclick="alert('モック: 新規スレッド作成フローは未実装')">＋ 新規スレッド</button>
+
+      <div class="section-title">曲通し</div>
+      <div id="songthrough-list"></div>
+
+      <div class="section-title">解決済み</div>
+      <div id="resolved-threads"></div>
+
+      <div class="mock-note">※ このモックはUI/UXの認識合わせ用です。診断ロジックの数値はダミーデータで、実際の音声解析結果ではありません。</div>
+    </div>
+  </section>
+
+  <!-- ============ SCREEN 2: スレッド詳細 / 録音 ============ -->
+  <section class="screen" data-screen="thread">
+    <div class="topbar">
+      <button class="back-btn" onclick="showScreen('list')">← 戻る</button>
+      <h1 id="thread-title"></h1>
+    </div>
+    <div style="overflow-y:auto;">
+      <div class="record-hero">
+        <div style="font-size:12px;color:var(--text-secondary);">引っかかっている箇所を録音して比較しよう</div>
+        <button class="record-btn" onclick="recordNewTake()">●</button>
+        <div class="record-hint">タップで録音（モック: 新規テイクを追加）</div>
+      </div>
+      <div class="section-title">テイク履歴</div>
+      <div id="take-list"></div>
+      <button class="resolve-btn" onclick="alert('モック: スレッドを解決済みにしました')">✓ このスレッドを解決済みにする</button>
+    </div>
+  </section>
+
+  <!-- ============ SCREEN 3: 診断結果 ============ -->
+  <section class="screen" data-screen="diagnosis">
+    <div class="topbar">
+      <button class="back-btn" onclick="showScreen('thread')">← 戻る</button>
+      <h1>診断結果</h1>
+    </div>
+    <div style="overflow-y:auto;">
+      <div class="compare-toggle">
+        <div class="pill active" id="pill-prev" onclick="setCompareMode('prev')">直前のテイクと比較</div>
+        <div class="pill" id="pill-best" onclick="setCompareMode('best')">最も安定したテイクと比較</div>
+      </div>
+
+      <div class="stat-hero">
+        <div class="lbl">安定度スコア</div>
+        <div class="val" id="stability-val">—</div>
+        <div class="delta" id="stability-delta">—</div>
+        <div class="spark-wrap">
+          <svg id="sparkline" width="100%" height="40" viewBox="0 0 280 40" preserveAspectRatio="none"></svg>
+        </div>
+      </div>
+
+      <div class="metric-grid">
+        <div class="metric">
+          <div class="lbl">音程ズレ</div>
+          <div class="val" id="metric-pitch">—</div>
+        </div>
+        <div class="metric">
+          <div class="lbl">タイミングのズレ</div>
+          <div class="val" id="metric-timing">—</div>
+        </div>
+      </div>
+
+      <div class="timeline-wrap">
+        <div class="timeline-title">どこがズレたか（テイクの時間軸）</div>
+        <div class="timeline-track" id="timeline-track"></div>
+        <div class="legend-row">
+          <span><span class="dot" style="background:var(--status-warning)"></span>軽微なズレ</span>
+          <span><span class="dot" style="background:var(--status-critical)"></span>大きなズレ</span>
+        </div>
+      </div>
+      <div class="mock-note">波形上のハイライトはダミーです。実装時はDTWアライメント結果から算出したズレ区間を表示します。</div>
+    </div>
+  </section>
+
+  <!-- ============ SCREEN 4: 曲通しスレッド ============ -->
+  <section class="screen" data-screen="songthrough">
+    <div class="topbar">
+      <button class="back-btn" onclick="showScreen('list')">← 戻る</button>
+      <h1 id="songthrough-title"></h1>
+    </div>
+    <div style="overflow-y:auto;">
+      <button class="log-btn" onclick="logSongThrough()">今回も通しで弾いた ＋</button>
+      <div class="section-title">完走ログ</div>
+      <div id="songthrough-log"></div>
+      <div class="mock-note">曲通しスレッドは診断を行わず、完走回数・所要時間の簡易記録のみです（PRD Non-goal準拠）。</div>
+    </div>
+  </section>
+
+</div>
+
+<script>
+/* ---------------- fake data (matches DesignDoc data model) ---------------- */
+const state = {
+  threads: [
+    {
+      id: 't1', type: 'phrase', title: 'ソロ2小節目のチョーキング', status: 'active',
+      lastActivity: '今日',
+      stabilityHistory: [42, 48, 51, 55, 60, 58, 66],
+      takes: [
+        { id: 'k5', date: '8/15 21:40', duration: '0:08', deltaVsPrev: +6 },
+        { id: 'k4', date: '8/14 22:10', duration: '0:09', deltaVsPrev: -2 },
+        { id: 'k3', date: '8/13 21:55', duration: '0:07', deltaVsPrev: +4 },
+        { id: 'k2', date: '8/12 20:30', duration: '0:08', deltaVsPrev: +3 },
+        { id: 'k1', date: '8/11 21:05', duration: '0:10', deltaVsPrev: 0 },
+      ],
+      diagnosis: {
+        prev:  { score: 66, delta: +8, pitch: '±18 cent', timing: '+35ms', segs: [
+                  {from:0, to:22, sev:0}, {from:22, to:38, sev:2}, {from:38, to:70, sev:0}, {from:70, to:85, sev:1}, {from:85,to:100,sev:0} ] },
+        best:  { score: 74, delta: -3, pitch: '±11 cent', timing: '+15ms', segs: [
+                  {from:0, to:40, sev:0}, {from:40, to:55, sev:1}, {from:55, to:100, sev:0} ] },
+      }
+    },
+    {
+      id: 't2', type: 'phrase', title: '基礎練: クロマチックロール4弦→6弦', status: 'active',
+      lastActivity: '2日前',
+      stabilityHistory: [30, 33, 35, 34, 39],
+      takes: [
+        { id: 'k3', date: '8/13 19:20', duration: '0:15', deltaVsPrev: +5 },
+        { id: 'k2', date: '8/11 19:05', duration: '0:14', deltaVsPrev: -1 },
+        { id: 'k1', date: '8/9 19:00', duration: '0:16', deltaVsPrev: 0 },
+      ],
+      diagnosis: {
+        prev: { score: 39, delta: +5, pitch: '±26 cent', timing: '+60ms', segs: [
+                 {from:0, to:15, sev:1}, {from:15, to:45, sev:2}, {from:45, to:100, sev:1} ] },
+        best: { score: 39, delta: 0, pitch: '±26 cent', timing: '+60ms', segs: [
+                 {from:0, to:15, sev:1}, {from:15, to:45, sev:2}, {from:45, to:100, sev:1} ] },
+      }
+    },
+  ],
+  resolved: [
+    { id: 't0', title: 'イントロのカッティング', lastActivity: '3週間前' },
+  ],
+  songThreads: [
+    { id: 's1', title: '「(仮)曲名A」通し', completions: [
+        { date: '8/14 22:30', duration: '3:42' },
+        { date: '8/10 21:50', duration: '3:58' },
+        { date: '8/6 21:40',  duration: '4:10' },
+      ] },
+  ],
+};
+
+let currentThreadId = null;
+let currentCompareMode = 'prev';
+
+/* ---------------- rendering ---------------- */
+function renderList() {
+  const activeEl = document.getElementById('active-threads');
+  activeEl.innerHTML = state.threads.map(t => `
+    <div class="thread-card" onclick="openThread('${t.id}')">
+      <div class="row">
+        <div class="title">${t.title}</div>
+        <div class="score-tile">
+          <div class="val">${t.stabilityHistory[t.stabilityHistory.length-1]}</div>
+          <div class="lbl">安定度</div>
+        </div>
+      </div>
+      <div class="meta-row">
+        <span>最終更新: ${t.lastActivity}</span>
+        <span>テイク ${t.takes.length}件</span>
+        <span class="spark">${sparkSvg(t.stabilityHistory, 60, 20)}</span>
+      </div>
+    </div>
+  `).join('');
+
+  document.getElementById('songthrough-list').innerHTML = state.songThreads.map(s => `
+    <div class="songthrough-row" onclick="openSongThread('${s.id}')">
+      <div class="title">${s.title}</div>
+      <div class="count">完走 ${s.completions.length}回</div>
+    </div>
+  `).join('');
+
+  document.getElementById('resolved-threads').innerHTML = state.resolved.map(r => `
+    <div class="thread-card" style="opacity:.65;cursor:default;">
+      <div class="row">
+        <div class="title">${r.title}</div>
+        <span class="badge muted">解決済み</span>
+      </div>
+      <div class="meta-row"><span>${r.lastActivity}</span></div>
+    </div>
+  `).join('');
+}
+
+function sparkSvg(values, w, h) {
+  const max = Math.max(...values), min = Math.min(...values);
+  const range = (max - min) || 1;
+  const step = w / (values.length - 1);
+  const pts = values.map((v, i) => `${(i*step).toFixed(1)},${(h - ((v-min)/range)*h).toFixed(1)}`);
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><polyline points="${pts.join(' ')}" fill="none" stroke="var(--series-1)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+}
+
+function openThread(id) {
+  currentThreadId = id;
+  const t = state.threads.find(x => x.id === id);
+  document.getElementById('thread-title').textContent = t.title;
+  document.getElementById('take-list').innerHTML = t.takes.map(k => `
+    <div class="take-row" onclick="openDiagnosis('${t.id}')">
+      <div class="date">${k.date}</div>
+      <div class="dur">${k.duration}</div>
+      <div class="${k.deltaVsPrev >= 0 ? 'delta-up' : 'delta-down'}">${k.deltaVsPrev >= 0 ? '+' : ''}${k.deltaVsPrev}</div>
+    </div>
+  `).join('');
+  showScreen('thread');
+}
+
+function recordNewTake() {
+  const t = state.threads.find(x => x.id === currentThreadId);
+  const newScore = Math.min(99, t.stabilityHistory[t.stabilityHistory.length-1] + Math.round(Math.random()*10 - 3));
+  const delta = newScore - t.stabilityHistory[t.stabilityHistory.length-1];
+  t.stabilityHistory.push(newScore);
+  t.takes.unshift({ id: 'new'+Date.now(), date: 'たった今', duration: '0:0'+(6+Math.floor(Math.random()*4)), deltaVsPrev: delta });
+  t.diagnosis.prev = { score: newScore, delta, pitch: `±${10+Math.floor(Math.random()*20)} cent`, timing: `+${10+Math.floor(Math.random()*50)}ms`,
+    segs: [{from:0,to:30,sev:0},{from:30,to:50,sev: delta<0?2:1},{from:50,to:100,sev:0}] };
+  openThread(t.id);
+  openDiagnosis(t.id);
+}
+
+function openDiagnosis(threadId) {
+  currentThreadId = threadId;
+  setCompareMode('prev');
+  showScreen('diagnosis');
+}
+
+function setCompareMode(mode) {
+  currentCompareMode = mode;
+  document.getElementById('pill-prev').classList.toggle('active', mode==='prev');
+  document.getElementById('pill-best').classList.toggle('active', mode==='best');
+  const t = state.threads.find(x => x.id === currentThreadId);
+  const d = t.diagnosis[mode];
+  document.getElementById('stability-val').textContent = d.score;
+  const deltaEl = document.getElementById('stability-delta');
+  deltaEl.textContent = (d.delta >= 0 ? '+' : '') + d.delta + (mode==='prev' ? '（直前のテイクから）' : '（ベストテイクとの差）');
+  deltaEl.style.color = d.delta >= 0 ? 'var(--success-text)' : 'var(--status-critical)';
+  document.getElementById('metric-pitch').textContent = d.pitch;
+  document.getElementById('metric-timing').textContent = d.timing;
+
+  const sparkSvgEl = document.getElementById('sparkline');
+  const hist = t.stabilityHistory;
+  const max = Math.max(...hist), min = Math.min(...hist), range=(max-min)||1;
+  const step = 280/(hist.length-1);
+  const pts = hist.map((v,i)=>`${(i*step).toFixed(1)},${(36-((v-min)/range)*32).toFixed(1)}`);
+  const lastPt = pts[pts.length-1].split(',');
+  sparkSvgEl.innerHTML = `
+    <polyline points="${pts.join(' ')}" fill="none" stroke="var(--text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <polyline points="${pts.slice(-2).join(' ')}" fill="none" stroke="var(--series-1)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="${lastPt[0]}" cy="${lastPt[1]}" r="4" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="2"/>
+  `;
+
+  const sevColor = { 0: 'transparent', 1: 'var(--status-warning)', 2: 'var(--status-critical)' };
+  document.getElementById('timeline-track').innerHTML = d.segs.map(s => `
+    <div class="timeline-seg" style="left:${s.from}%;width:${s.to-s.from}%;background:${sevColor[s.sev]};"></div>
+  `).join('');
+}
+
+function openSongThread(id) {
+  currentThreadId = id;
+  const s = state.songThreads.find(x => x.id === id);
+  document.getElementById('songthrough-title').textContent = s.title;
+  renderSongLog(s);
+  showScreen('songthrough');
+}
+
+function renderSongLog(s) {
+  document.getElementById('songthrough-log').innerHTML = s.completions.map(c => `
+    <div class="songlog-row">
+      <div class="date">${c.date}</div>
+      <div class="dur">${c.duration}</div>
+    </div>
+  `).join('');
+}
+
+function logSongThrough() {
+  const s = state.songThreads.find(x => x.id === currentThreadId);
+  s.completions.unshift({ date: 'たった今', duration: (3+Math.floor(Math.random()*2))+':'+String(Math.floor(Math.random()*60)).padStart(2,'0') });
+  renderSongLog(s);
+}
+
+function showScreen(name) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.toggle('active', s.dataset.screen === name));
+}
+
+renderList();
+</script>
+</body>
+</html>

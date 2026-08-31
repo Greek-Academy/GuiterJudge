@@ -1,0 +1,165 @@
+import db, { newId, type Thread, type Take, type NoteEvent } from './db'
+import { Recorder, decodeAudioBlob, extractAudioFromVideoFile } from './recording'
+import { transcribe } from './basicPitch'
+import { diagnose } from './comparison'
+
+export async function createPhraseThread(title: string): Promise<string> {
+  const id = newId()
+  const now = Date.now()
+  const thread: Thread = { id, type: 'phrase', title, createdAt: now, lastActivityAt: now, status: 'active' }
+  await db.threads.add(thread)
+  return id
+}
+
+export async function createSongThroughThread(title: string): Promise<string> {
+  const id = newId()
+  const now = Date.now()
+  const thread: Thread = { id, type: 'songThrough', title, createdAt: now, lastActivityAt: now, status: 'active' }
+  await db.threads.add(thread)
+  return id
+}
+
+let activeRecorder: Recorder | null = null
+
+export async function startRecording(): Promise<void> {
+  activeRecorder = new Recorder()
+  await activeRecorder.start()
+}
+
+/**
+ * 録音停止 → 音声保存 → Basic Pitchで音符起こし → (比較対象があれば)診断を実行、まで一気通貫で行う。
+ * DesignDoc Section 5のパイプラインのうちステップ1-8をこの関数に集約している。
+ */
+export async function stopRecordingAndDiagnose(threadId: string): Promise<{ takeId: string; diagnosisId?: string }> {
+  if (!activeRecorder) throw new Error('録音が開始されていません')
+  const { blob, durationMs } = await activeRecorder.stop()
+  activeRecorder = null
+
+  const takeId = newId()
+  const audioBuffer = await decodeAudioBlob(blob)
+  const { noteEvents, analysisOffsetMs } = await transcribe(audioBuffer)
+
+  const take: Take = {
+    id: takeId,
+    threadId,
+    role: 'normal',
+    audioBlob: blob,
+    sourceType: 'recorded',
+    recordedAt: Date.now(),
+    durationMs,
+    noteEvents,
+    analysisOffsetMs,
+  }
+  await db.takes.add(take)
+  await db.threads.update(threadId, { lastActivityAt: Date.now() })
+
+  const diagnosisId = await runDiagnosisForTake(threadId, take)
+  return { takeId, diagnosisId }
+}
+
+/**
+ * 比較対象の決定(Section5 手順4): デフォルトは直前のテイク。
+ * お手本(role:'reference')が設定されていればそちらを優先して比較する。
+ */
+async function pickComparisonTarget(threadId: string, excludeTakeId: string): Promise<{ take: Take; mode: 'reference' | 'prev' } | null> {
+  const reference = await db.takes.where({ threadId, role: 'reference' }).first()
+  if (reference && reference.id !== excludeTakeId && reference.noteEvents) {
+    return { take: reference, mode: 'reference' }
+  }
+  const normalTakes = await db.takes.where({ threadId, role: 'normal' }).sortBy('recordedAt')
+  const prevTakes = normalTakes.filter((t) => t.id !== excludeTakeId && t.noteEvents)
+  if (prevTakes.length === 0) return null
+  return { take: prevTakes[prevTakes.length - 1], mode: 'prev' }
+}
+
+async function runDiagnosisForTake(threadId: string, take: Take): Promise<string | undefined> {
+  const target = await pickComparisonTarget(threadId, take.id)
+  if (!target || !take.noteEvents) return undefined
+
+  const metrics = diagnose(target.take.noteEvents!, take.noteEvents)
+  const diagnosisId = newId()
+  await db.diagnosisResults.add({
+    id: diagnosisId,
+    takeId: take.id,
+    comparedToTakeId: target.take.id,
+    compareMode: target.mode,
+    ...metrics,
+  })
+  return diagnosisId
+}
+
+/** ComparisonViewでの比較モード切り替え(prev/best/reference)を、その場で再計算する */
+export async function recomputeDiagnosis(
+  threadId: string,
+  takeId: string,
+  mode: 'prev' | 'best' | 'reference',
+) {
+  const take = await db.takes.get(takeId)
+  if (!take?.noteEvents) return null
+
+  let targetTake: Take | undefined
+  if (mode === 'reference') {
+    targetTake = await db.takes.where({ threadId, role: 'reference' }).first()
+  } else if (mode === 'prev') {
+    const normalTakes = (await db.takes.where({ threadId, role: 'normal' }).sortBy('recordedAt')).filter(
+      (t) => t.id !== takeId && t.noteEvents,
+    )
+    targetTake = normalTakes[normalTakes.length - 1]
+  } else if (mode === 'best') {
+    const results = await db.diagnosisResults.toArray()
+    const threadTakeIds = new Set((await db.takes.where({ threadId, role: 'normal' }).toArray()).map((t) => t.id))
+    const candidates = results.filter((r) => threadTakeIds.has(r.takeId) && r.takeId !== takeId)
+    if (candidates.length) {
+      const best = candidates.reduce((a, b) => (b.stabilityScore > a.stabilityScore ? b : a))
+      targetTake = await db.takes.get(best.takeId)
+    }
+  }
+  if (!targetTake?.noteEvents) return null
+  return { metrics: diagnose(targetTake.noteEvents, take.noteEvents), comparedToTakeId: targetTake.id }
+}
+
+export async function setReferenceTakeFromFile(threadId: string, file: File): Promise<void> {
+  const isVideo = file.type.startsWith('video/')
+  const audioBlob = isVideo ? await extractAudioFromVideoFile(file) : file
+  const audioBuffer = await decodeAudioBlob(audioBlob)
+  const { noteEvents, analysisOffsetMs } = await transcribe(audioBuffer)
+
+  // スレッドにつきお手本は1件のみ。既存のものがあれば置き換える
+  const existing = await db.takes.where({ threadId, role: 'reference' }).first()
+  if (existing) await db.takes.delete(existing.id)
+
+  const takeId = newId()
+  await db.takes.add({
+    id: takeId,
+    threadId,
+    role: 'reference',
+    audioBlob,
+    sourceType: isVideo ? 'importedVideo' : 'importedAudio',
+    recordedAt: Date.now(),
+    durationMs: Math.round(audioBuffer.duration * 1000),
+    noteEvents,
+    analysisOffsetMs,
+  })
+  await db.threads.update(threadId, { referenceTakeId: takeId })
+}
+
+/** Section6: 「解決済みにする」時の自己確認ステップ */
+export async function resolveThread(threadId: string, lastDiagnosisId: string | undefined, selfCheck: 'yes' | 'no' | 'unsure') {
+  await db.threads.update(threadId, { status: 'resolved' })
+  if (lastDiagnosisId) {
+    await db.diagnosisResults.update(lastDiagnosisId, { resolvedSelfCheck: selfCheck })
+  }
+}
+
+export async function addSongThroughCompletion(threadId: string, durationSec: number, note?: string) {
+  await db.songThroughCompletions.add({
+    id: newId(),
+    threadId,
+    at: Date.now(),
+    durationMs: Math.round(durationSec * 1000),
+    note,
+  })
+  await db.threads.update(threadId, { lastActivityAt: Date.now() })
+}
+
+export type { NoteEvent }

@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Basic Pitch 実機速度テスト</title>
+<style>
+  body { font-family: system-ui, -apple-system, sans-serif; max-width: 480px; margin: 0 auto; padding: 16px; background: #fcfcfb; color: #0b0b0b; }
+  h1 { font-size: 18px; }
+  button { font-size: 16px; padding: 12px 16px; border-radius: 10px; border: 1px solid #c3c2b7; background: #2a78d6; color: white; width: 100%; margin: 6px 0; }
+  button:disabled { background: #c3c2b7; }
+  #fileInput { width: 100%; margin: 6px 0; }
+  .log { white-space: pre-wrap; font-family: ui-monospace, monospace; font-size: 12px; background: #f0efec; border-radius: 8px; padding: 10px; margin-top: 12px; max-height: 60vh; overflow-y: auto; }
+  .note { font-size: 11px; color: #52514e; margin-top: 6px; }
+  .status { font-weight: 600; margin: 8px 0; }
+</style>
+</head>
+<body>
+<h1>Basic Pitch 実機速度テスト（M1予備検証）</h1>
+<p class="note">
+  このページを実際のスマホのブラウザで開いて使ってください。
+  マイクで数秒〜30秒程度録音するか、既存の音声ファイルを選ぶと、
+  ブラウザ内でBasic Pitch（TensorFlow.js版）が音符起こしを行い、
+  モデル読み込み時間・推論時間・検出された音符数・(取得できれば)メモリ使用量を表示します。
+  ネット接続が必要です（CDNからモデルとライブラリを読み込むため）。
+</p>
+
+<button id="btnRecord">🎙️ マイクで10秒録音してテスト</button>
+<input type="file" id="fileInput" accept="audio/*,video/*">
+<button id="btnRunFile" disabled>選択したファイルでテスト</button>
+
+<div class="status" id="status">準備中...</div>
+<div class="log" id="log"></div>
+
+<script type="module">
+  const logEl = document.getElementById('log');
+  const statusEl = document.getElementById('status');
+  const btnRecord = document.getElementById('btnRecord');
+  const btnRunFile = document.getElementById('btnRunFile');
+  const fileInput = document.getElementById('fileInput');
+
+  function log(msg) {
+    console.log(msg);
+    logEl.textContent += msg + '\n';
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+  function setStatus(msg) { statusEl.textContent = msg; }
+
+  // --- 端末情報 ---
+  log('=== 端末情報 ===');
+  log('UserAgent: ' + navigator.userAgent);
+  if (navigator.deviceMemory) log('deviceMemory(概算): ' + navigator.deviceMemory + 'GB');
+  if (navigator.hardwareConcurrency) log('CPUコア数: ' + navigator.hardwareConcurrency);
+  log('');
+
+  let BasicPitch, outputToNotesPoly, addPitchBendsToNoteEvents, noteFramesToTime;
+  let basicPitchModel;
+  const MODEL_URL = 'https://cdn.jsdelivr.net/npm/@spotify/basic-pitch@1.0.1/model/model.json';
+
+  async function init() {
+    setStatus('ライブラリ読み込み中...');
+    const t0 = performance.now();
+    // esm.shがbasic-pitch内部で使うtfjs(^3.2.0)を含めて依存解決してくれるので、
+    // 自分で別バージョンのtfjsを追加importすると二重読み込み(カーネル登録の衝突)の原因になる。
+    // BasicPitchの操作だけで完結するため、ここではtf本体のimportは不要。
+    const mod = await import('https://esm.sh/@spotify/basic-pitch@1.0.1');
+    ({ BasicPitch, outputToNotesPoly, addPitchBendsToNoteEvents, noteFramesToTime } = mod);
+    const libLoadMs = performance.now() - t0;
+    log(`ライブラリ読み込み時間: ${libLoadMs.toFixed(0)}ms`);
+
+    setStatus('モデル読み込み中...(初回のみ時間がかかります)');
+    const t1 = performance.now();
+    basicPitchModel = new BasicPitch(MODEL_URL);
+    await basicPitchModel.model; // Promise<tf.GraphModel>の解決を待つ
+    const modelLoadMs = performance.now() - t1;
+    log(`モデル読み込み時間: ${modelLoadMs.toFixed(0)}ms`);
+
+    setStatus('準備完了。録音するかファイルを選んでください');
+    btnRecord.disabled = false;
+    btnRunFile.disabled = false;
+  }
+
+  function memInfo(label) {
+    if (performance.memory) {
+      // Chrome系のみで使える非標準API
+      const used = (performance.memory.usedJSHeapSize / 1024 / 1024).toFixed(1);
+      const total = (performance.memory.totalJSHeapSize / 1024 / 1024).toFixed(1);
+      log(`[${label}] JSヒープ使用量: ${used}MB / 確保済み: ${total}MB`);
+    } else {
+      log(`[${label}] このブラウザではperformance.memoryが取得できません(Safari/Firefox等)`);
+    }
+  }
+
+  async function runInference(audioBuffer, label) {
+    setStatus('音符起こし中...');
+    memInfo('推論前');
+    const frames = [];
+    const onsets = [];
+    const contours = [];
+    const t0 = performance.now();
+    await basicPitchModel.evaluateModel(
+      audioBuffer,
+      (f, o, c) => { frames.push(...f); onsets.push(...o); contours.push(...c); },
+      (percent) => { setStatus(`音符起こし中... ${Math.round(percent * 100)}%`); },
+    );
+    const inferMs = performance.now() - t0;
+
+    const t1 = performance.now();
+    const notes = noteFramesToTime(
+      addPitchBendsToNoteEvents(contours, outputToNotesPoly(frames, onsets, 0.5, 0.3, 5)),
+    );
+    const postMs = performance.now() - t1;
+
+    memInfo('推論後');
+    log(`\n=== ${label} (音声長: ${audioBuffer.duration.toFixed(1)}秒) ===`);
+    log(`推論時間: ${inferMs.toFixed(0)}ms / 後処理時間: ${postMs.toFixed(0)}ms`);
+    log(`検出された音符数: ${notes.length}`);
+    notes.slice(0, 20).forEach(n => {
+      log(`  pitch=${n.pitchMidi}  start=${(n.startTimeSeconds * 1000).toFixed(0)}ms  dur=${(n.durationSeconds * 1000).toFixed(0)}ms`);
+    });
+    if (notes.length > 20) log(`  ...他 ${notes.length - 20} 件`);
+    setStatus('完了。もう一度試すこともできます');
+  }
+
+  async function decodeToAudioBuffer(blobOrFile) {
+    const arrayBuf = await blobOrFile.arrayBuffer();
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const decoded = await audioCtx.decodeAudioData(arrayBuf);
+    // evaluateModelは22050Hzモノラル以外を受け付けず例外を投げるため、
+    // decodeAudioDataの結果(端末既定の44.1/48kHz)をそのまま渡してはいけない。
+    // 本番のコードパスは app/src/preprocess.ts の preprocessForAnalysis 側にある。
+    return await resampleToMono22050(decoded);
+  }
+
+  async function resampleToMono22050(buffer) {
+    if (buffer.sampleRate === 22050 && buffer.numberOfChannels === 1) return buffer;
+    const offline = new OfflineAudioContext(1, Math.ceil(buffer.duration * 22050), 22050);
+    const src = offline.createBufferSource();
+    src.buffer = buffer;
+    src.connect(offline.destination);
+    src.start();
+    return await offline.startRendering();
+  }
+
+  btnRecord.addEventListener('click', async () => {
+    try {
+      btnRecord.disabled = true;
+      setStatus('マイク許可を確認中...');
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      const chunks = [];
+      recorder.ondataavailable = (e) => chunks.push(e.data);
+      recorder.start();
+      setStatus('録音中... (10秒)');
+      log('録音開始');
+      await new Promise(r => setTimeout(r, 10000));
+      recorder.stop();
+      await new Promise(r => recorder.onstop = r);
+      stream.getTracks().forEach(t => t.stop());
+      const blob = new Blob(chunks, { type: 'audio/webm' });
+      log(`録音完了 (${(blob.size / 1024).toFixed(0)}KB)`);
+      const audioBuffer = await decodeToAudioBuffer(blob);
+      await runInference(audioBuffer, 'マイク録音');
+    } catch (err) {
+      log('エラー: ' + err.message);
+      setStatus('エラーが発生しました');
+    } finally {
+      btnRecord.disabled = false;
+    }
+  });
+
+  fileInput.addEventListener('change', () => {
+    btnRunFile.disabled = !fileInput.files.length;
+  });
+
+  btnRunFile.addEventListener('click', async () => {
+    if (!fileInput.files.length) return;
+    try {
+      btnRunFile.disabled = true;
+      const file = fileInput.files[0];
+      log(`\nファイル読み込み: ${file.name} (${(file.size / 1024).toFixed(0)}KB, ${file.type})`);
+      let audioBuffer;
+      if (file.type.startsWith('video/')) {
+        // 動画から音声トラックを抽出(Section3の設計通りの手法)
+        const videoEl = document.createElement('video');
+        videoEl.src = URL.createObjectURL(file);
+        await new Promise(r => videoEl.onloadedmetadata = r);
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const src = audioCtx.createMediaElementSource(videoEl);
+        const dest = audioCtx.createMediaStreamDestination();
+        src.connect(dest);
+        const rec = new MediaRecorder(dest.stream);
+        const chunks = [];
+        rec.ondataavailable = (e) => chunks.push(e.data);
+        rec.start();
+        videoEl.play();
+        await new Promise(r => videoEl.onended = r);
+        rec.stop();
+        await new Promise(r => rec.onstop = r);
+        const blob = new Blob(chunks, { type: 'audio/webm' });
+        audioBuffer = await decodeToAudioBuffer(blob);
+      } else {
+        audioBuffer = await decodeToAudioBuffer(file);
+      }
+      await runInference(audioBuffer, `ファイル: ${file.name}`);
+    } catch (err) {
+      log('エラー: ' + err.message);
+      setStatus('エラーが発生しました');
+    } finally {
+      btnRunFile.disabled = false;
+    }
+  });
+
+  init().catch(err => {
+    log('初期化エラー: ' + err.message);
+    setStatus('初期化に失敗しました。ネット接続を確認してください');
+  });
+</script>
+</body>
+</html>
