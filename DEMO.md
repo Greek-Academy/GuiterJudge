@@ -24,11 +24,14 @@
 ## 1. 事前準備（発表の前日までに済ませておく）
 
 ```sh
-cd app
-npm install          # 初回のみ
+cd /Users/yk/dev/guitar-diagnosis/app
+npm install
 npm run build
-npm run preview      # http://localhost:4173 が立つ
+npm run preview
 ```
+
+- `npm install` が要るのは初回だけ
+- `npm run preview` を実行すると **http://localhost:4173** が立つので、ブラウザで開く
 
 ブラウザで開いたら、**その場で必ず「デモデータを読み込む」を押しておくこと。**
 

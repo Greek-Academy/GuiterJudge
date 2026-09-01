@@ -7,9 +7,14 @@
 
 ```sh
 npm install
-npm run dev   # 開発サーバー(要マイク許可のためhttps or localhostで開くこと)
-npm run build # 本番ビルド(PWA/Service Worker込み)
+npm run dev
+npm run build
+npm run preview
 ```
+
+- `npm run dev` … 開発サーバー。マイクの許可が要るので https か localhost で開くこと
+- `npm run build` … 本番ビルド(PWA/Service Worker込み)
+- `npm run preview` … ビルド結果を http://localhost:4173 で配信する
 
 スマホの実機で試す場合は `npm run build && npm run preview -- --host` などでLAN内に公開し、
 スマホのブラウザから同一Wi-Fi経由でアクセスすると、マイク録音・Basic Pitchの実機検証ができる。
