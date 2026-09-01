@@ -1,6 +1,6 @@
 import { BasicPitch, outputToNotesPoly, addPitchBendsToNoteEvents, noteFramesToTime } from '@spotify/basic-pitch'
 import type { NoteEvent } from './db'
-import { preprocessForAnalysis, type PreprocessResult } from './preprocess'
+import { preprocessForAnalysis, ANALYSIS_SAMPLE_RATE, type PreprocessResult } from './preprocess'
 
 // M1予備検証(Appendix B)で確認した、誤検出(倍音を別音符として拾う)を抑えるための閾値。
 // 実録音での再検証が必要な、暫定のデフォルト値。TranscriptionLab画面で実データに対して調整する。
@@ -41,6 +41,47 @@ function getModel(): Promise<BasicPitch> {
 /** 初回推論時の待ち時間(Appendix Bで約3秒)を録音前に済ませておきたい場合に使う */
 export async function preloadModel(): Promise<void> {
   await getModel()
+}
+
+let warmUpPromise: Promise<void> | null = null
+
+/**
+ * モデルの読み込みだけでなく「初回の推論」まで済ませておく。
+ *
+ * M1本検証(2026-08-26)の実測では、初回の内訳は
+ *   ライブラリ読込 7.5秒 + モデル読込 1.9秒 + 初回推論 8.2秒
+ * で、体感の大半を占めるのは最後の初回推論(TensorFlow.jsのシェーダコンパイル)だった。
+ * preloadModelはモデル読込までしか行わないため、これだけでは8秒の待ちは消えない。
+ * ここで捨て推論を1回回しておくと、ユーザーが最初に録音したときの待ちが2回目以降の
+ * 数百msに落ちる。
+ *
+ * ウォームアップは「速くするための最適化」でしかないので、失敗してもアプリを止めない。
+ * 何度呼んでも1回しか走らない。
+ */
+export async function warmUpModel(): Promise<void> {
+  if (!warmUpPromise) {
+    warmUpPromise = (async () => {
+      try {
+        const model = await getModel()
+        // 無音だと前処理側で弾かれてしまうので、微小な振幅の信号を入れる。
+        // 長さは1秒あれば全カーネルが一巡するため、これ以上長くしても待ち時間が増えるだけ。
+        const ctx = new OfflineAudioContext(1, ANALYSIS_SAMPLE_RATE, ANALYSIS_SAMPLE_RATE)
+        const buffer = ctx.createBuffer(1, ANALYSIS_SAMPLE_RATE, ANALYSIS_SAMPLE_RATE)
+        const data = buffer.getChannelData(0)
+        for (let i = 0; i < data.length; i++) {
+          data[i] = Math.sin((2 * Math.PI * 220 * i) / ANALYSIS_SAMPLE_RATE) * 0.2
+        }
+        await model.evaluateModel(
+          buffer,
+          () => {},
+          () => {},
+        )
+      } catch {
+        // ネットワーク不通やWebGL非対応など。実際の録音時に改めてエラーを出せばよい
+      }
+    })()
+  }
+  return warmUpPromise
 }
 
 export type NoteExtractionOptions = {

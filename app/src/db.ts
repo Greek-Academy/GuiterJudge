@@ -20,7 +20,9 @@ export type Take = {
   threadId: string
   role: 'normal' | 'reference' // 'reference' = お手本(講師録音等)。スレッドにつき任意で1件
   audioBlob: Blob
-  sourceType: 'recorded' | 'importedAudio' | 'importedVideo'
+  // 'demo' = デモ用に合成した音声。実際の解析パイプラインは通しているが、
+  // 人間が弾いた録音ではないことを区別できるようにしておく
+  sourceType: 'recorded' | 'importedAudio' | 'importedVideo' | 'demo'
   recordedAt: number
   durationMs: number
   noteEvents?: NoteEvent[] // Basic Pitchでの音符起こし結果(未処理の場合はundefined)

@@ -124,9 +124,10 @@ export async function setReferenceTakeFromFile(threadId: string, file: File): Pr
   const audioBuffer = await decodeAudioBlob(audioBlob)
   const { noteEvents, analysisOffsetMs } = await transcribe(audioBuffer)
 
-  // スレッドにつきお手本は1件のみ。既存のものがあれば置き換える
+  // スレッドにつきお手本は1件のみ。既存のものがあれば置き換える。
+  // 既存が「過去テイクを昇格させたもの(案C)」の場合は削除せず通常テイクに戻す
   const existing = await db.takes.where({ threadId, role: 'reference' }).first()
-  if (existing) await db.takes.delete(existing.id)
+  if (existing) await demoteReferenceTake(existing)
 
   const takeId = newId()
   await db.takes.add({
@@ -141,6 +142,46 @@ export async function setReferenceTakeFromFile(threadId: string, file: File): Pr
     analysisOffsetMs,
   })
   await db.threads.update(threadId, { referenceTakeId: takeId })
+}
+
+/**
+ * DesignDoc Appendix C 案C:「過去テイクをそのままお手本に指定する」。
+ * 案B(講師の録音を取り込む)と違って音声の取り込みも音符起こしも不要で、
+ * role を 'normal' → 'reference' に切り替えるだけで済む。
+ */
+export async function setReferenceTakeFromExistingTake(threadId: string, takeId: string): Promise<void> {
+  const take = await db.takes.get(takeId)
+  if (!take || take.threadId !== threadId) throw new Error('テイクが見つかりません')
+
+  const existing = await db.takes.where({ threadId, role: 'reference' }).first()
+  if (existing && existing.id !== takeId) {
+    await demoteReferenceTake(existing)
+  }
+
+  await db.takes.update(takeId, { role: 'reference' })
+  await db.threads.update(threadId, { referenceTakeId: takeId })
+}
+
+/** お手本の指定を解除する */
+export async function clearReferenceTake(threadId: string): Promise<void> {
+  const existing = await db.takes.where({ threadId, role: 'reference' }).first()
+  if (existing) await demoteReferenceTake(existing)
+  await db.threads.update(threadId, { referenceTakeId: undefined })
+}
+
+/**
+ * お手本の座から降ろす。
+ * 取り込んだファイル(案B)は元々テイク履歴に無かったものなので削除するが、
+ * 自分の過去テイクを昇格させたもの(案C)は消すと演奏の記録そのものが失われるため、
+ * 通常テイクに戻すだけにする。
+ */
+async function demoteReferenceTake(reference: Take): Promise<void> {
+  const wasImported = reference.sourceType === 'importedAudio' || reference.sourceType === 'importedVideo'
+  if (wasImported) {
+    await db.takes.delete(reference.id)
+  } else {
+    await db.takes.update(reference.id, { role: 'normal' })
+  }
 }
 
 /** Section6: 「解決済みにする」時の自己確認ステップ */

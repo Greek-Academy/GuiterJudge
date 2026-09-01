@@ -14,6 +14,7 @@ import {
 } from '../basicPitch'
 import { playNoteEvents } from '../preview'
 import { parsePitchList, pitchToName, pitchSequenceDiff, type PitchDiff } from '../pitchNames'
+import PianoRoll from '../components/PianoRoll'
 import type { NoteEvent } from '../db'
 
 // DesignDoc Section 8 / Appendix B「M1本検証への示唆」に対応する検証用画面。
@@ -325,6 +326,17 @@ export default function TranscriptionLab({ onBack }: { onBack: () => void }) {
             <div className="section-title">
               6. 検出結果({notes.length}音
               {applyPitchRange && outOfRangeCount > 0 ? ` / 音域外 ${outOfRangeCount}音を除去` : ''})
+            </div>
+            {/* M1本検証で観測した倍音由来の誤検出(+12/+19/+24半音が同時刻に重なる)は、
+                音符一覧のテキストでは見つけにくい。ピアノロールにすると平行に並んだ帯として
+                一目で分かるため、数値より先に置いている */}
+            <div className="chart-block">
+              <PianoRoll
+                notes={notes}
+                showHarmonicGuides
+                height={200}
+                pitchRange={applyPitchRange ? GUITAR_PITCH_RANGE : undefined}
+              />
             </div>
             {currentDiff && (
               <div className="metric-grid">

@@ -11,6 +11,10 @@
   --status-warning: #fab219;
   --status-critical: #d03b3b;
   --success-text: #006300;
+  /* チャートのマーク用に暗くしたアンバー。--status-warning(#fab219)は白背景に対する
+     コントラストが1.79:1しかなく、細いマークとして描くと視認できないため分けている
+     (3:1以上を満たす値を選定済み)。塗りつぶしの帯やテキストにはこちらを使う */
+  --chart-extra: #b8801a;
 }
 * { box-sizing: border-box; }
 body {
@@ -113,3 +117,48 @@ button.secondary {
 .self-check .q { font-size: 13px; margin-bottom: 8px; }
 .self-check .btn-row { display: flex; gap: 6px; }
 .self-check button { flex: 1; padding: 8px; border-radius: 10px; border: 1px solid var(--gridline); background: var(--surface-1); cursor: pointer; font-size: 12px; }
+
+/* --- 以下はデモ導線(中間発表用)で追加したもの --- */
+
+/* window.prompt/alert をプロジェクタに出さないためのインライン入力・通知 */
+.inline-form { margin: 8px 16px; display: flex; flex-direction: column; gap: 8px; }
+.inline-form input {
+  padding: 10px 12px;
+  border: 1px solid var(--gridline);
+  border-radius: 12px;
+  font-size: 14px;
+  font-family: inherit;
+  color: var(--text-primary);
+  background: var(--surface-1);
+}
+.inline-form input:focus { outline: none; border-color: var(--series-1); }
+.inline-form .btn-row { display: flex; gap: 8px; }
+.inline-form .btn-row button { flex: 1; }
+
+.notice {
+  margin: 10px 16px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  border: 1px solid var(--gridline);
+  color: var(--text-secondary);
+}
+.notice.error { border-color: var(--status-critical); color: var(--status-critical); }
+.notice.success { border-color: var(--success-text); color: var(--success-text); }
+
+/* デモデータ投入の進捗。テイク18件を実際の解析パイプラインに通すため十数秒かかる */
+.progress-track {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--gridline);
+  overflow: hidden;
+  margin: 8px 16px;
+}
+.progress-fill { height: 100%; background: var(--series-1); transition: width 120ms linear; }
+
+button.danger { color: var(--status-critical); border-color: var(--status-critical); }
+button:disabled { opacity: 0.5; cursor: default; }
+
+/* スレッド詳細のスコア推移・診断のピアノロールを差し込む枠 */
+.chart-block { margin: 10px 16px; }

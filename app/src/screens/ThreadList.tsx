@@ -1,7 +1,9 @@
+import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import db from '../db'
 import { createPhraseThread, createSongThroughThread } from '../actions'
 import { exportAllData, importAllData } from '../backup'
+import { seedDemoData, clearAllData, hasDemoData, type SeedProgress } from '../demo/seed'
 
 type Props = {
   onOpenThread: (id: string) => void
@@ -9,7 +11,17 @@ type Props = {
   onOpenLab: () => void
 }
 
+type Notice = { kind: 'success' | 'error'; text: string }
+
+/** 新規スレッド作成の入力欄。window.promptだとプロジェクタにOS標準ダイアログが割り込むため画面内に置く */
+type Composing = null | { type: 'phrase' | 'songThrough' }
+
 export default function ThreadList({ onOpenThread, onOpenSongThrough, onOpenLab }: Props) {
+  const [composing, setComposing] = useState<Composing>(null)
+  const [draftTitle, setDraftTitle] = useState('')
+  const [notice, setNotice] = useState<Notice | null>(null)
+  const [seeding, setSeeding] = useState<SeedProgress | null>(null)
+
   const activeThreads = useLiveQuery(
     () => db.threads.where({ type: 'phrase', status: 'active' }).sortBy('lastActivityAt'),
     [],
@@ -19,29 +31,46 @@ export default function ThreadList({ onOpenThread, onOpenSongThrough, onOpenLab 
     [],
   )
   const songThreads = useLiveQuery(() => db.threads.where({ type: 'songThrough' }).toArray(), [])
+  const demoLoaded = useLiveQuery(() => hasDemoData(), [])
+
+  // 各スレッドの「最新テイクのスコア」。
+  // 以前はdb.takes.toArray()の返却順(=主キー順。idはUUIDなので実質ランダム)のまま
+  // threadIdごとに上書きしていたため、最新とは限らないテイクのスコアが出ていた。
+  // recordedAtの昇順に並べてから上書きすることで、最後に書かれる値が最新テイクのものになる。
   const latestScores = useLiveQuery(async () => {
+    const takes = await db.takes.where('role').equals('normal').sortBy('recordedAt')
     const results = await db.diagnosisResults.toArray()
-    const takes = await db.takes.toArray()
-    const map = new Map<string, number>() // threadId -> latest stabilityScore
+    const byTakeId = new Map(results.map((r) => [r.takeId, r]))
+    const map = new Map<string, number>()
     for (const take of takes) {
-      const r = results.filter((x) => x.takeId === take.id)[0]
+      const r = byTakeId.get(take.id)
       if (r) map.set(take.threadId, r.stabilityScore)
     }
     return map
   }, [])
 
-  async function handleNewPhrase() {
-    const title = window.prompt('スレッドのタイトル(引っかかっているフレーズ名など)')
-    if (!title) return
-    const id = await createPhraseThread(title)
-    onOpenThread(id)
+  function beginCompose(type: 'phrase' | 'songThrough') {
+    setComposing({ type })
+    setDraftTitle('')
+    setNotice(null)
   }
 
-  async function handleNewSongThrough() {
-    const title = window.prompt('曲通しスレッドのタイトル(曲名など)')
-    if (!title) return
-    const id = await createSongThroughThread(title)
-    onOpenSongThrough(id)
+  async function handleCreate() {
+    if (!composing) return
+    const title = draftTitle.trim()
+    if (!title) {
+      setNotice({ kind: 'error', text: 'タイトルを入力してください' })
+      return
+    }
+    if (composing.type === 'phrase') {
+      const id = await createPhraseThread(title)
+      setComposing(null)
+      onOpenThread(id)
+    } else {
+      const id = await createSongThroughThread(title)
+      setComposing(null)
+      onOpenSongThrough(id)
+    }
   }
 
   async function handleImport(e: React.ChangeEvent<HTMLInputElement>) {
@@ -49,13 +78,36 @@ export default function ThreadList({ onOpenThread, onOpenSongThrough, onOpenLab 
     if (!file) return
     try {
       const { threadCount, takeCount } = await importAllData(file)
-      alert(`インポートしました(スレッド${threadCount}件、テイク${takeCount}件)`)
+      setNotice({ kind: 'success', text: `インポートしました(スレッド${threadCount}件、テイク${takeCount}件)` })
     } catch (err) {
-      alert('インポートに失敗しました: ' + (err as Error).message)
+      setNotice({ kind: 'error', text: 'インポートに失敗しました: ' + (err as Error).message })
     } finally {
       e.target.value = ''
     }
   }
+
+  async function handleSeed() {
+    setNotice(null)
+    setSeeding({ step: 0, total: 1, label: '準備しています…' })
+    try {
+      const { threadCount, takeCount } = await seedDemoData((p) => setSeeding(p))
+      setNotice({
+        kind: 'success',
+        text: `デモデータを読み込みました(スレッド${threadCount}件、テイク${takeCount}件)`,
+      })
+    } catch (err) {
+      setNotice({ kind: 'error', text: 'デモデータの読み込みに失敗しました: ' + (err as Error).message })
+    } finally {
+      setSeeding(null)
+    }
+  }
+
+  async function handleClear() {
+    await clearAllData()
+    setNotice({ kind: 'success', text: 'データを削除しました' })
+  }
+
+  const seedPercent = seeding ? Math.round((seeding.step / Math.max(1, seeding.total)) * 100) : 0
 
   return (
     <>
@@ -63,6 +115,8 @@ export default function ThreadList({ onOpenThread, onOpenSongThrough, onOpenLab 
         <h1>ギター上達診断</h1>
       </div>
       <div style={{ overflowY: 'auto' }}>
+        {notice && <div className={`notice ${notice.kind}`}>{notice.text}</div>}
+
         <div className="section-title">アクティブなスレッド</div>
         {(activeThreads ?? []).map((t) => (
           <div className="card" key={t.id} onClick={() => onOpenThread(t.id)}>
@@ -73,9 +127,39 @@ export default function ThreadList({ onOpenThread, onOpenSongThrough, onOpenLab 
             <div className="meta">最終更新: {new Date(t.lastActivityAt).toLocaleString('ja-JP')}</div>
           </div>
         ))}
-        <button className="new-btn" onClick={handleNewPhrase}>
-          ＋ 新規フレーズスレッド
-        </button>
+        {(activeThreads ?? []).length === 0 && !composing && (
+          <div className="note-block">
+            まだスレッドがありません。練習中に引っかかったフレーズを1つ登録するか、
+            下の「デモデータを読み込む」で3週間ぶんの練習履歴を試せます。
+          </div>
+        )}
+
+        {composing?.type === 'phrase' ? (
+          <div className="inline-form">
+            <input
+              value={draftTitle}
+              autoFocus
+              placeholder="引っかかっているフレーズ名など"
+              onChange={(e) => setDraftTitle(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void handleCreate()
+                if (e.key === 'Escape') setComposing(null)
+              }}
+            />
+            <div className="btn-row">
+              <button className="primary" onClick={handleCreate}>
+                作成する
+              </button>
+              <button className="secondary" onClick={() => setComposing(null)}>
+                やめる
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button className="new-btn" onClick={() => beginCompose('phrase')}>
+            ＋ 新規フレーズスレッド
+          </button>
+        )}
 
         <div className="section-title">曲通し</div>
         {(songThreads ?? []).map((t) => (
@@ -83,19 +167,74 @@ export default function ThreadList({ onOpenThread, onOpenSongThrough, onOpenLab 
             <div className="title">{t.title}</div>
           </div>
         ))}
-        <button className="new-btn" onClick={handleNewSongThrough}>
-          ＋ 新規曲通しスレッド
-        </button>
-
-        <div className="section-title">解決済み</div>
-        {(resolvedThreads ?? []).map((t) => (
-          <div className="card" style={{ opacity: 0.6, cursor: 'default' }} key={t.id}>
-            <div className="row">
-              <div className="title">{t.title}</div>
-              <span className="badge">解決済み</span>
+        {composing?.type === 'songThrough' ? (
+          <div className="inline-form">
+            <input
+              value={draftTitle}
+              autoFocus
+              placeholder="曲名など"
+              onChange={(e) => setDraftTitle(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void handleCreate()
+                if (e.key === 'Escape') setComposing(null)
+              }}
+            />
+            <div className="btn-row">
+              <button className="primary" onClick={handleCreate}>
+                作成する
+              </button>
+              <button className="secondary" onClick={() => setComposing(null)}>
+                やめる
+              </button>
             </div>
           </div>
-        ))}
+        ) : (
+          <button className="new-btn" onClick={() => beginCompose('songThrough')}>
+            ＋ 新規曲通しスレッド
+          </button>
+        )}
+
+        {(resolvedThreads ?? []).length > 0 && (
+          <>
+            <div className="section-title">解決済み</div>
+            {(resolvedThreads ?? []).map((t) => (
+              <div className="card" style={{ opacity: 0.6, cursor: 'default' }} key={t.id}>
+                <div className="row">
+                  <div className="title">{t.title}</div>
+                  <span className="badge">解決済み</span>
+                </div>
+              </div>
+            ))}
+          </>
+        )}
+
+        <div className="section-title">デモデータ</div>
+        <div className="note-block">
+          3週間ぶんの練習履歴を投入します。音声はブラウザ内で合成したもの(実際の録音ではありません)ですが、
+          <strong>音符起こしも診断も本番と同じ処理を通しており、表示されるスコアは実際の解析結果です</strong>。
+          テイクを1件ずつ解析するため30〜40秒ほどかかります。
+        </div>
+        {seeding ? (
+          <>
+            <div className="progress-track">
+              <div className="progress-fill" style={{ width: `${seedPercent}%` }} />
+            </div>
+            <div className="meta" style={{ margin: '0 16px' }}>
+              {seeding.label}（{seeding.step}/{seeding.total}）
+            </div>
+          </>
+        ) : (
+          <div className="stack">
+            <button className="secondary" onClick={handleSeed}>
+              {demoLoaded ? '🎬 デモデータを作り直す' : '🎬 デモデータを読み込む'}
+            </button>
+            {demoLoaded && (
+              <button className="secondary danger" onClick={handleClear}>
+                すべてのデータを削除する
+              </button>
+            )}
+          </div>
+        )}
 
         <div className="section-title">データのバックアップ</div>
         <div className="note-block">

@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import db from '../db'
 import { recomputeDiagnosis } from '../actions'
 import { playNoteEvents } from '../preview'
-import type { DiagnosisMetrics } from '../comparison'
+import { alignNoteSequences, type DiagnosisMetrics } from '../comparison'
+import PianoRoll, { type PianoRollNote } from '../components/PianoRoll'
 
 type Props = {
   threadId: string
@@ -11,10 +12,12 @@ type Props = {
   onBack: () => void
 }
 
-const severityColor: Record<number, string> = {
-  0: 'transparent',
-  1: 'var(--status-warning)',
-  2: 'var(--status-critical)',
+/** 比較モードごとの「この数字が何を意味するか」。取り違えると診断の読み方を誤るので画面に出す */
+const MODE_NOTE: Record<'prev' | 'best' | 'reference', string> = {
+  prev: '直前のテイクとの比較です。前回と同じように弾けているか(=一貫性)を見ています。',
+  best: 'これまでで最も安定していたテイクとの比較です。調子の良かった日を基準にどうか、を見ています。',
+  reference:
+    'お手本との比較です。自己比較と違い「正しさ」に近い指標になります。自己比較のスコアが高いのにここで落ちる場合、毎回同じ間違いを安定して弾いている可能性があります。',
 }
 
 export default function DiagnosisView({ threadId, takeId, onBack }: Props) {
@@ -38,6 +41,36 @@ export default function DiagnosisView({ threadId, takeId, onBack }: Props) {
       cancelled = true
     }
   }, [threadId, takeId, mode])
+
+  // 診断メトリクスは集計値なので「どの音がどうズレたか」までは分からない。
+  // 表示のためにアライメントをもう一度取り直す(comparison.tsと同じ関数なので結果は一致する)。
+  const rollNotes = useMemo<PianoRollNote[]>(() => {
+    const ref = comparedTake?.noteEvents
+    const cur = take?.noteEvents
+    if (!ref || !cur) return []
+    return alignNoteSequences(ref, cur).flatMap<PianoRollNote>((p) => {
+      if (p.take && p.ref) {
+        const { pitch, startMs, durationMs } = p.take
+        return [{ pitch, startMs, durationMs, mark: p.ref.pitch === p.take.pitch ? 'match' : 'pitchMismatch' }]
+      }
+      if (p.take) {
+        const { pitch, startMs, durationMs } = p.take
+        return [{ pitch, startMs, durationMs, mark: 'extra' }]
+      }
+      if (p.ref) {
+        // 弾き忘れは今回のテイクに音が無いので、基準側の位置に「穴」として描く
+        const { pitch, startMs, durationMs } = p.ref
+        return [{ pitch, startMs, durationMs, mark: 'missed' }]
+      }
+      return []
+    })
+  }, [comparedTake?.noteEvents, take?.noteEvents])
+
+  const ghostNotes = useMemo<PianoRollNote[] | undefined>(
+    () =>
+      comparedTake?.noteEvents?.map(({ pitch, startMs, durationMs }) => ({ pitch, startMs, durationMs })),
+    [comparedTake?.noteEvents],
+  )
 
   if (!take) return null
 
@@ -63,6 +96,7 @@ export default function DiagnosisView({ threadId, takeId, onBack }: Props) {
             </div>
           )}
         </div>
+        <div className="note-block">{MODE_NOTE[mode]}</div>
 
         <div className="row" style={{ margin: '0 16px', gap: 8 }}>
           {take.noteEvents && (
@@ -106,30 +140,21 @@ export default function DiagnosisView({ threadId, takeId, onBack }: Props) {
                 <div className="val">{result.missedOrExtraNoteCount}</div>
               </div>
             </div>
-            <div className="section-title">どこがズレたか(基準テイクの時間軸)</div>
-            <div className="timeline-track">
-              {result.deviationTimeline.map((seg, i) => {
-                const totalMs = result.deviationTimeline.length
-                  ? result.deviationTimeline[result.deviationTimeline.length - 1].endMs
-                  : 1
-                const leftPct = (seg.startMs / totalMs) * 100
-                const widthPct = ((seg.endMs - seg.startMs) / totalMs) * 100
-                return (
-                  <div
-                    key={i}
-                    className="timeline-seg"
-                    style={{ left: `${leftPct}%`, width: `${widthPct}%`, background: severityColor[seg.severity] }}
-                  />
-                )
-              })}
-            </div>
-            <div className="legend-row">
-              <span>
-                <span className="dot" style={{ background: 'var(--status-warning)' }}></span>タイミングのズレ
-              </span>
-              <span>
-                <span className="dot" style={{ background: 'var(--status-critical)' }}></span>音の間違い/弾き忘れ
-              </span>
+
+            {/* 以前はズレの位置を1次元の帯(deviationTimeline)だけで示していたが、
+                それでは「いつ」しか分からず「どの音を」が伝わらなかった。
+                ピアノロールに置き換えて、音高方向のズレも同時に読めるようにしている。
+                deviationTimelineはデータモデル上は引き続き保存している。 */}
+            <div className="section-title">どこがどうズレたか</div>
+            {rollNotes.length > 0 ? (
+              <div className="chart-block">
+                <PianoRoll notes={rollNotes} ghostNotes={ghostNotes} height={190} />
+              </div>
+            ) : (
+              <div className="note-block">音符起こしの結果が無いため、ズレの内訳を表示できません。</div>
+            )}
+            <div className="note-block">
+              薄い灰色は比較対象(基準)のテイクです。色付きが今回のテイクで、基準と照らし合わせた結果を表しています。
             </div>
           </>
         )}
