@@ -68,7 +68,10 @@ button.primary {
   cursor: pointer;
   width: 100%;
 }
-button.secondary {
+/* labelにも同じ見た目を当てる。<input type="file">を隠して<label>で包む箇所があり、
+   要素セレクタのままだとボタンに見えず素の大きなテキストとして表示されてしまう */
+button.secondary,
+label.secondary {
   background: var(--surface-1);
   border: 1px solid var(--gridline);
   border-radius: 12px;
@@ -157,7 +160,7 @@ button.secondary {
 }
 .progress-fill { height: 100%; background: var(--series-1); transition: width 120ms linear; }
 
-button.danger { color: var(--status-critical); border-color: var(--status-critical); }
+button.danger, label.danger { color: var(--status-critical); border-color: var(--status-critical); }
 button:disabled { opacity: 0.5; cursor: default; }
 
 /* スレッド詳細のスコア推移・診断のピアノロールを差し込む枠 */

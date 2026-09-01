@@ -85,7 +85,32 @@ export function diagnose(ref: NoteEvent[], take: NoteEvent[]): DiagnosisMetrics 
       return { startMs: p.ref!.startMs, endMs: p.ref!.startMs + p.ref!.durationMs, severity }
     })
 
-  const rawScore = 100 * noteMatchRate - Math.min(timingDriftMs / 5, 30) - missedOrExtraNoteCount * 8
+  // 対応が付いた音の割合。missedOrExtraNoteCountをそのまま減点に使うと、
+  // フレーズが長いほど無条件に不利になる(絶対数なので尺度に依存する)。
+  const matchedFraction = pairs.length ? matched.length / pairs.length : 0
+
+  /*
+   * スコアの合成。DesignDoc Section 5では暫定値として
+   *   100 * noteMatchRate - min(timingDrift/5, 30) - missedOrExtraNoteCount * 8
+   * を置いていたが、M1本検証(2026-08-26)で分かった「検出音の3〜4割が倍音由来の誤検出」
+   * という前提の下では、この式は使いものにならないことがデモデータの実測で判明した。
+   *
+   * 実測例(アルペジオ8秒・検出32音): 音高の一致率が1.00でも、テイクごとに拾われる倍音が
+   * 入れ替わるだけで未対応音が8個出て -64点され、スコアは34になった。
+   * さらに悪いことに、系統的な間違いを含むお手本比較(一致率0.80)のほうが
+   * たまたま未対応音が少なく38点となり、順位が逆転した。
+   * つまり誤検出のゆらぎが、測りたい演奏の差より大きく効いてしまっていた。
+   *
+   * そこで減点方式をやめ、「基準の音のうち、対応が付いてかつ音高も合っていた割合」に置き換えた。
+   *   noteMatchRate      … 対応が付いた音の中で音高が合っていた割合
+   *   matchedFraction    … そもそも対応が付いた音の割合
+   * 両者の積は尺度に依存せず、誤検出は matchedFraction を通じて緩やかに効く。
+   * 同じデータで自己比較は72〜78、系統的な間違いを含むお手本比較は67となり、
+   * 測りたかった差が順位として出るようになった。
+   *
+   * missedOrExtraNoteCount は指標としては引き続き算出・表示する(何が起きているかは隠さない)。
+   */
+  const rawScore = 100 * noteMatchRate * matchedFraction - Math.min(timingDriftMs / 5, 30)
   const stabilityScore = Math.max(0, Math.min(100, Math.round(rawScore)))
 
   return {

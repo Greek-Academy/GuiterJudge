@@ -49,35 +49,31 @@ function run(pitches: readonly number[], startBeat: number, step: number, beats:
   return pitches.map((pitch, i) => ({ pitch, beat: startBeat + i * step, beats }))
 }
 
-/** ストロークした和音。低音弦から順にわずかにずらして「ジャラン」と鳴らす */
-function strum(pitches: readonly number[], beat: number, beats: number, spreadBeats = 0.035): PhraseNote[] {
-  return pitches.map((pitch, i) => ({
-    pitch,
-    beat: beat + i * spreadBeats,
-    beats: beats - i * spreadBeats,
-  }))
-}
-
 // --- シナリオ1: 16分のオルタネイト -------------------------------------------
 // Aマイナーペンタトニックの5〜8フレットのボックスを2オクターブ上下する定番の運指。
 const AM_PENTATONIC_UP = [57, 60, 62, 64, 67, 69, 72, 74, 76, 79, 81]
 const AM_PENTATONIC_RUN = [...AM_PENTATONIC_UP, ...AM_PENTATONIC_UP.slice(0, -1).reverse()]
 
-// --- シナリオ2: F→B♭のコードチェンジ ----------------------------------------
-// どちらも1弦から6弦までを押さえるバレーコード。ここでの「引っかかり」は
-// 押さえ替えそのものなので、和音を等間隔で往復させるだけでよい。
-const F_CHORD = [41, 48, 53, 57, 60, 65] // F2 C3 F3 A3 C4 F4
-const BB_CHORD = [46, 53, 58, 62, 65, 70] // A#2 F3 A#3 D4 F4 A#4
+// --- シナリオ2: F→B♭の押さえ替え --------------------------------------------
+// 当初は6音のバレーコードを同時に鳴らすストロークにしていたが、実機で試したところ
+// Basic Pitchが和音を安定して分解できず、テイクごとに検出音がばらついて
+// 安定度スコアが0に張り付いた(M1で「和音は未検証」としていた懸念が現実になった形)。
+// アルペジオ(分散和音)にして音を時間方向に分ければ、押さえ替えという練習内容は保ったまま
+// 音符起こしが安定する。これは素材側の都合ではなく、現在のエンジンで扱える範囲の話なので、
+// 発表では「単音・分散和音までが現状の守備範囲」という所見としてそのまま話せる。
+const F_ARPEGGIO = [53, 57, 60, 65] // F3 A3 C4 F4
+const BB_ARPEGGIO = [58, 62, 65, 70] // A#3 D4 F4 A#4
 
 /**
- * B♭の3度(D4)は各和音の4番目の音。和音6音×6回のうち、B♭は2・4・6番目なので
- * 全体でのindexは9・21・33になる。ここを半音下げると「毎回同じ押さえ間違い」になる。
+ * B♭の3度(D4)はB♭アルペジオの2番目の音。F→B♭を3往復するので、
+ * B♭のブロックは全体のindex 4・12・20から始まり、D4はその1つ後ろ=5・13・21になる。
+ * ここを半音下げると「B♭を押さえるたびに3度だけ半音低い」= 毎回同じ押さえ間違いになる。
  * seed.tsのシナリオ2でSloppinessProfileに渡す。
  */
 export const BB_THIRD_FLAT_SHIFTS = [
-  { noteIndex: 9, semitones: -1 },
+  { noteIndex: 5, semitones: -1 },
+  { noteIndex: 13, semitones: -1 },
   { noteIndex: 21, semitones: -1 },
-  { noteIndex: 33, semitones: -1 },
 ]
 
 // --- シナリオ3: クロマチック上行 ---------------------------------------------
@@ -95,24 +91,26 @@ const CHROMATIC_UP = [
 export const DEMO_PHRASES: readonly DemoPhrase[] = [
   {
     id: 'alt-picking',
+    // bpm84の16分(1音178ms)では音が詰まりすぎてBasic Pitchが取りこぼしたため、
+    // 練習テンポとして現実的な範囲でbpmを落とし、1音あたり約260msを確保している
     title: '16分のオルタネイト（Amペンタ 5〜8フレット）',
-    bpm: 84,
-    notes: [...run(AM_PENTATONIC_RUN, 0, 0.25), ...run(AM_PENTATONIC_RUN, 5.25, 0.25)],
-    description: 'Amペンタの1ポジションを16分で2往復。速く弾くほど粒が揃わなくなる。',
+    bpm: 58,
+    notes: run(AM_PENTATONIC_RUN, 0, 0.25),
+    description: 'Amペンタの1ポジションを16分で1往復。メトロノームを落として粒を揃える練習。',
   },
   {
     id: 'chord-change',
-    title: 'F→B♭ のコードチェンジ',
-    bpm: 100,
+    title: 'F→B♭ の押さえ替え（アルペジオ）',
+    bpm: 96,
     notes: [
-      ...strum(F_CHORD, 0, 2),
-      ...strum(BB_CHORD, 2, 2),
-      ...strum(F_CHORD, 4, 2),
-      ...strum(BB_CHORD, 6, 2),
-      ...strum(F_CHORD, 8, 2),
-      ...strum(BB_CHORD, 10, 2),
+      ...run(F_ARPEGGIO, 0, 0.5),
+      ...run(BB_ARPEGGIO, 2, 0.5),
+      ...run(F_ARPEGGIO, 4, 0.5),
+      ...run(BB_ARPEGGIO, 6, 0.5),
+      ...run(F_ARPEGGIO, 8, 0.5),
+      ...run(BB_ARPEGGIO, 10, 0.5),
     ],
-    description: 'バレーコード同士の押さえ替えを2拍ごとに3往復。',
+    description: 'バレーコード同士の押さえ替えを、アルペジオで2拍ごとに3往復。',
   },
   {
     id: 'chromatic',

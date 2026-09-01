@@ -8,8 +8,14 @@ import { createRng } from './rng'
 
 export type SynthNote = { pitch: number; startMs: number; durationMs: number; velocity?: number }
 
-/** 音符の記譜上の長さを過ぎても弦は鳴り続けるので、その分を足して描画する */
-const NOTE_RELEASE_MS = 320
+/**
+ * 音符の記譜上の長さを過ぎても弦は鳴り続けるので、その分を足して描画する。
+ *
+ * 当初320msにしていたが、実機(ブラウザ)でのデモ投入で音符の分離が悪く、
+ * Basic Pitchが隣り合う音を取りこぼす・混同することが分かったため短くした。
+ * 音の余韻としての自然さより、音符起こしが安定することを優先している。
+ */
+const NOTE_RELEASE_MS = 180
 /** 打ち切りによるプチノイズを防ぐための末尾フェード */
 const NOTE_FADE_OUT_MS = 90
 /** バッファ末尾に残す余白。ここを削ると最後の音の減衰が途中で切れる */

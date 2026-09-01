@@ -212,7 +212,8 @@ export default function ThreadList({ onOpenThread, onOpenSongThrough, onOpenLab 
         <div className="note-block">
           3週間ぶんの練習履歴を投入します。音声はブラウザ内で合成したもの(実際の録音ではありません)ですが、
           <strong>音符起こしも診断も本番と同じ処理を通しており、表示されるスコアは実際の解析結果です</strong>。
-          テイクを1件ずつ解析するため30〜40秒ほどかかります。
+          テイク19件を1件ずつ解析するため、1〜2分ほどかかります(端末の性能によってはもう少しかかります)。
+          一度読み込めば端末内に保存されるので、発表の前に済ませておけます。
         </div>
         {seeding ? (
           <>
