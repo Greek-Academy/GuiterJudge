@@ -157,19 +157,36 @@ function makeDiagnosis(take: Take, prevNormal: Take): DiagnosisResult {
   }
 }
 
+let seedInFlight: Promise<{ threadCount: number; takeCount: number }> | null = null
+/** 進行中のシードに対する進捗通知先。画面を離れて戻ってきた場合に付け替える */
+let activeProgress: ((p: SeedProgress) => void) | undefined
+
 /**
  * デモ用の練習履歴をDBに投入する。
  * 合成音声を実際のtranscribe() → diagnose()に通すので、診断結果は本物である。
- * 固定idを使っているため、複数回呼んでも行が重複せず上書きになる。
+ *
+ * 投入には1〜2分かかり、その間に画面を離れると進捗表示が消えてボタンが押せる状態に戻る。
+ * そこで二重に押されても解析が並列に走らないよう、進行中のPromiseを共有する。
  */
-export async function seedDemoData(onProgress?: (p: SeedProgress) => void): Promise<{ threadCount: number; takeCount: number }> {
+export function seedDemoData(onProgress?: (p: SeedProgress) => void): Promise<{ threadCount: number; takeCount: number }> {
+  activeProgress = onProgress
+  if (!seedInFlight) {
+    seedInFlight = runSeed().finally(() => {
+      seedInFlight = null
+      activeProgress = undefined
+    })
+  }
+  return seedInFlight
+}
+
+async function runSeed(): Promise<{ threadCount: number; takeCount: number }> {
   const takeCount = PHRASE_THREAD_SPECS.reduce((acc, s) => acc + s.takes.length, 0)
   // +1はモデルのウォームアップぶん。ここを数えないと、最初のテイクだけ極端に長い1ステップになる
   const total = takeCount + 1
   let step = 0
   const report = (label: string) => {
     step += 1
-    onProgress?.({ step, total, label })
+    activeProgress?.({ step, total, label })
   }
 
   // 初回推論はTensorFlow.jsのウォームアップで8秒前後かかる(M1実測)。
@@ -245,8 +262,17 @@ export async function seedDemoData(onProgress?: (p: SeedProgress) => void): Prom
       referenceTakeId,
     }
 
-    // スレッド単位でまとめて書く。解析中の中途半端な状態が一覧に見えないようにするため
+    // スレッド単位でまとめて書く。解析中の中途半端な状態が一覧に見えないようにするため。
+    // 固定idの上書きだけでは足りず、先にそのスレッドのテイクを一掃する必要がある。
+    // リハーサルでデモスレッドに実際にマイク録音した場合、そのテイクはUUIDなので上書きされず、
+    // しかもrecordedAtが「今」なので最新テイクとして残り、スコア推移も一覧のバッジも変わってしまう
+    // (「作り直す」を押しても直らない)。テイク数を減らす方向にspecを変えた場合の古い行も同様。
     await db.transaction('rw', db.threads, db.takes, db.diagnosisResults, async () => {
+      const staleTakeIds = await db.takes.where('threadId').equals(spec.id).primaryKeys()
+      if (staleTakeIds.length) {
+        await db.diagnosisResults.where('takeId').anyOf(staleTakeIds).delete()
+        await db.takes.bulkDelete(staleTakeIds)
+      }
       await db.threads.put(thread)
       await db.takes.bulkPut(takeRows)
       await db.diagnosisResults.bulkPut(diagnosisRows)
@@ -269,6 +295,7 @@ export async function seedDemoData(onProgress?: (p: SeedProgress) => void): Prom
     status: 'active',
   }
   await db.transaction('rw', db.threads, db.songThroughCompletions, async () => {
+    await db.songThroughCompletions.where('threadId').equals(SONG_THREAD_ID).delete()
     await db.threads.put(songThread)
     await db.songThroughCompletions.bulkPut(completions)
   })
@@ -286,8 +313,18 @@ export async function clearAllData(): Promise<void> {
   })
 }
 
-/** デモデータが投入済みか。固定idのprefixで判定する */
+/**
+ * デモデータが「最後まで」投入済みか。
+ * prefixが1件でもあればtrue、という判定だと、途中で失敗して中途半端に入った状態でも
+ * ボタンが「作り直す」に変わり、投入済みに見えてしまう。
+ * 期待するスレッドとテイクが全部そろっていることを条件にする。
+ */
 export async function hasDemoData(): Promise<boolean> {
-  const count = await db.threads.where('id').startsWith(DEMO_ID_PREFIX).count()
-  return count > 0
+  const phraseThreadIds = PHRASE_THREAD_SPECS.map((s) => s.id)
+  const threadCount = await db.threads.where('id').anyOf([...phraseThreadIds, SONG_THREAD_ID]).count()
+  if (threadCount !== phraseThreadIds.length + 1) return false
+
+  const expectedTakes = PHRASE_THREAD_SPECS.reduce((acc, s) => acc + s.takes.length, 0)
+  const takeCount = await db.takes.where('threadId').anyOf(phraseThreadIds).count()
+  return takeCount >= expectedTakes
 }

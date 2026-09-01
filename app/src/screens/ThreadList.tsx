@@ -21,6 +21,10 @@ export default function ThreadList({ onOpenThread, onOpenSongThrough, onOpenLab 
   const [draftTitle, setDraftTitle] = useState('')
   const [notice, setNotice] = useState<Notice | null>(null)
   const [seeding, setSeeding] = useState<SeedProgress | null>(null)
+  // window.confirmはプロジェクタにOS標準ダイアログが割り込むので使えないが、
+  // 「作り直す」の真下にあるボタンひとつで19テイクが消え、復旧に1〜2分かかるため、
+  // 代わりに画面内で2段階にする
+  const [confirmingClear, setConfirmingClear] = useState(false)
 
   const activeThreads = useLiveQuery(
     () => db.threads.where({ type: 'phrase', status: 'active' }).sortBy('lastActivityAt'),
@@ -104,6 +108,7 @@ export default function ThreadList({ onOpenThread, onOpenSongThrough, onOpenLab 
 
   async function handleClear() {
     await clearAllData()
+    setConfirmingClear(false)
     setNotice({ kind: 'success', text: 'データを削除しました' })
   }
 
@@ -229,11 +234,24 @@ export default function ThreadList({ onOpenThread, onOpenSongThrough, onOpenLab 
             <button className="secondary" onClick={handleSeed}>
               {demoLoaded ? '🎬 デモデータを作り直す' : '🎬 デモデータを読み込む'}
             </button>
-            {demoLoaded && (
-              <button className="secondary danger" onClick={handleClear}>
-                すべてのデータを削除する
-              </button>
-            )}
+            {demoLoaded &&
+              (confirmingClear ? (
+                <div className="self-check">
+                  <div className="q">
+                    デモデータも自分で録音したテイクも、すべて消えます。よろしいですか？
+                  </div>
+                  <div className="btn-row">
+                    <button onClick={handleClear} style={{ color: 'var(--status-critical)' }}>
+                      削除する
+                    </button>
+                    <button onClick={() => setConfirmingClear(false)}>やめる</button>
+                  </div>
+                </div>
+              ) : (
+                <button className="secondary danger" onClick={() => setConfirmingClear(true)}>
+                  すべてのデータを削除する
+                </button>
+              ))}
           </div>
         )}
 

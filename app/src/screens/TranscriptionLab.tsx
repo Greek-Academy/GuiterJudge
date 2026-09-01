@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { Recorder, decodeAudioBlob } from '../recording'
 import { preprocessForAnalysis, type PreprocessResult } from '../preprocess'
 import {
@@ -63,11 +63,17 @@ export default function TranscriptionLab({ onBack }: { onBack: () => void }) {
   const expected = parsePitchList(expectedText)
   const range = applyPitchRange ? GUITAR_PITCH_RANGE : null
   // 音域フィルタは閾値処理のさらに後段なので、素の結果を1回求めてから絞る
-  // (スライダー操作のたびにnotesFromModelOutputを2回走らせないため)
-  const notesBeforeRange: NoteEvent[] = raw
-    ? notesFromModelOutput(raw, { onsetThreshold: onset, frameThreshold: frame, minNoteFrames, pitchRange: null })
-    : []
-  const notes: NoteEvent[] = filterByPitchRange(notesBeforeRange, range)
+  // (スライダー操作のたびにnotesFromModelOutputを2回走らせないため)。
+  // またピアノロールのホバーで再レンダーが起きるようになったため、useMemoで包まないと
+  // マウスを動かすたびに音符化の後処理が丸ごと走ってカクつく
+  const notesBeforeRange: NoteEvent[] = useMemo(
+    () =>
+      raw
+        ? notesFromModelOutput(raw, { onsetThreshold: onset, frameThreshold: frame, minNoteFrames, pitchRange: null })
+        : [],
+    [raw, onset, frame, minNoteFrames],
+  )
+  const notes: NoteEvent[] = useMemo(() => filterByPitchRange(notesBeforeRange, range), [notesBeforeRange, range])
   const outOfRangeCount = notesBeforeRange.length - notes.length
   const currentDiff = raw && expected.length ? pitchSequenceDiff(expected, notes.map((n) => n.pitch), octaveTolerant) : null
 

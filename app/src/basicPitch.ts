@@ -33,7 +33,16 @@ let modelPromise: Promise<BasicPitch> | null = null
 function getModel(): Promise<BasicPitch> {
   if (!modelPromise) {
     const bp = new BasicPitch(MODEL_URL)
-    modelPromise = bp.model.then(() => bp)
+    // 失敗したPromiseをキャッシュに残すと、以後このセッションでは二度と音符起こしできなくなる。
+    // 起動時のwarmUpModelがモデル取得に一度失敗しただけで(会場のネットが一瞬不安定だった等)、
+    // ネットが復帰しても録音・デモ投入・検証画面のすべてが落ち続ける状態になってしまうため、
+    // 失敗したらキャッシュを捨てて次の呼び出しで再試行できるようにする。
+    modelPromise = bp.model
+      .then(() => bp)
+      .catch((err) => {
+        modelPromise = null
+        throw err
+      })
   }
   return modelPromise
 }
@@ -77,7 +86,9 @@ export async function warmUpModel(): Promise<void> {
           () => {},
         )
       } catch {
-        // ネットワーク不通やWebGL非対応など。実際の録音時に改めてエラーを出せばよい
+        // ネットワーク不通やWebGL非対応など。実際の録音時に改めてエラーを出せばよい。
+        // ただし成功として固定してしまうと再試行の機会が無くなるので、キャッシュは捨てる
+        warmUpPromise = null
       }
     })()
   }

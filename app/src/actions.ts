@@ -101,8 +101,11 @@ export async function recomputeDiagnosis(
   if (mode === 'reference') {
     targetTake = await db.takes.where({ threadId, role: 'reference' }).first()
   } else if (mode === 'prev') {
+    // 「直前」は、いま見ているテイクより古いものの中で最も新しいもの。
+    // recordedAtの条件を落とすと、過去のテイクを開いたときにスレッドの最新テイクと
+    // 比較してしまい、一覧やスコア推移に出ている保存済みの診断値と食い違う
     const normalTakes = (await db.takes.where({ threadId, role: 'normal' }).sortBy('recordedAt')).filter(
-      (t) => t.id !== takeId && t.noteEvents,
+      (t) => t.id !== takeId && t.noteEvents && t.recordedAt < take.recordedAt,
     )
     targetTake = normalTakes[normalTakes.length - 1]
   } else if (mode === 'best') {
