@@ -1,5 +1,6 @@
 import type { Rng } from './rng'
 import type { SynthNote } from './synth'
+import type { Subdivision } from '../gridTiming'
 
 // デモで使うフレーズの定義と、「そのフレーズを人間が弾いたらどうブレるか」のモデル。
 // フレーズは拍単位で持ち、bpmと組み合わせて実時間に変換する。
@@ -12,6 +13,8 @@ export type DemoPhrase = {
   id: string
   title: string
   bpm: number
+  /** フレーズに含まれる最小音価(拍あたりの分割数)。拍の格子に対する解析に使う */
+  subdivision: Subdivision
   notes: PhraseNote[]
   /** UIに出す短い説明 */
   description: string
@@ -98,6 +101,7 @@ export const DEMO_PHRASES: readonly DemoPhrase[] = [
     // 練習テンポとして現実的な範囲でbpmを落とし、1音あたり約260msを確保している
     title: '16分のオルタネイト（Amペンタ 5〜8フレット）',
     bpm: 58,
+    subdivision: 4,
     notes: run(AM_PENTATONIC_RUN, 0, 0.25),
     description: 'Amペンタの1ポジションを16分で1往復。メトロノームを落として粒を揃える練習。',
   },
@@ -105,6 +109,7 @@ export const DEMO_PHRASES: readonly DemoPhrase[] = [
     id: 'chord-change',
     title: 'F→B♭ の押さえ替え（アルペジオ）',
     bpm: 96,
+    subdivision: 2,
     notes: [
       ...run(F_ARPEGGIO, 0, 0.5),
       ...run(BB_ARPEGGIO, 2, 0.5),
@@ -119,6 +124,7 @@ export const DEMO_PHRASES: readonly DemoPhrase[] = [
     id: 'chromatic',
     title: 'クロマチック上行（基礎練）',
     bpm: 96,
+    subdivision: 2,
     notes: run(CHROMATIC_UP, 0, 0.5),
     description: '6弦から1弦まで1〜4フレットを8分で上行する基礎練習。',
   },
@@ -126,6 +132,7 @@ export const DEMO_PHRASES: readonly DemoPhrase[] = [
     id: 'vibrato',
     title: '1弦12フレットのビブラート',
     bpm: 76,
+    subdivision: 2,
     notes: [
       { pitch: 76, beat: 0, beats: 1 },
       { pitch: 74, beat: 1, beats: 0.5 },

@@ -2,13 +2,28 @@ import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 
 export type ScoreTrendPoint = {
   at: number          // 記録時刻(epoch ms)
-  score: number       // 0-100
+  value: number       // metric.unit の単位の値
   /** 点に添える短いラベル（省略可） */
   label?: string
 }
 
+/** 何を描いているか。以前は 0-100 の「安定度スコア」に固定していたが、単位付きの量に一般化した */
+export type TrendMetric = {
+  title: string
+  unit: string
+  /** true なら小さいほど良い(ばらつき ms など) */
+  lowerIsBetter: boolean
+  /** この幅未満の差は「変化あり」と言い切らずに横ばい扱いにする(単位は unit) */
+  flatThreshold: number
+  /** 縦軸上限の最小値。小さな値どうしの差が引き伸ばされて劇的に見えるのを防ぐ */
+  minAxisMax: number
+  /** グラフ下の注記。指標の意味を取り違えられると診断そのものが誤解されるので必ず出す */
+  note: string
+}
+
 export type ScoreTrendProps = {
   points: ScoreTrendPoint[]   // 時系列昇順で渡される前提だが、内部でも念のため昇順に整えること
+  metric: TrendMetric
   /** 描画高さ(px)。既定 160 */
   height?: number
   /** 強調表示したい点のインデックス（今見ているテイクなど） */
@@ -44,10 +59,7 @@ const LABEL_CHAR_W = 7 // 12px セミボールドの数字 1 文字の概算幅(
 // 混んできたら中間のマーカーを省いて線の連続性を優先する。
 const MARKER_MIN_GAP = 24
 
-// 傾向判定のパラメータ。
-// 安定度スコアは録音環境(マイク位置・部屋鳴り)だけで数ポイント揺れるので、
-// この幅未満の差は「変化あり」と言い切らずに横ばい扱いにする。
-const FLAT_THRESHOLD = 3
+// 傾向判定のパラメータ(横ばいの幅は metric.flatThreshold)。
 // 2 点だと前半・後半の平均が単なる 1 点対 1 点になり、ノイズがそのまま判定になってしまう
 const MIN_POINTS_FOR_TREND = 3
 
@@ -55,10 +67,26 @@ type Anchor = 'start' | 'middle' | 'end'
 type Side = 'above' | 'below'
 type PlacedLabel = { x: number; y: number; anchor: Anchor; side: Side; w: number }
 
-function clampScore(v: number) {
-  // 呼び出し側の計算ミスや NaN で描画が壊れないように、必ず 0-100 に丸める
+function clampValue(v: number, max: number) {
+  // 呼び出し側の計算ミスや NaN で描画が壊れないように、必ず 0-max に丸める
   if (!Number.isFinite(v)) return 0
-  return Math.min(100, Math.max(0, v))
+  return Math.min(max, Math.max(0, v))
+}
+
+// 縦軸の上限。下限は常に 0 に固定し、上限だけをデータから「切りのいい値」に丸める。
+// 最小〜最大に自動フィットさせると数msの揺れが劇的な改善に見えるので、
+// 0 を必ず含めたうえで metric.minAxisMax より小さくはしない。
+function niceAxisMax(maxValue: number, minAxisMax: number) {
+  const target = Math.max(minAxisMax, maxValue * 1.15)
+  const mag = Math.pow(10, Math.floor(Math.log10(target)))
+  for (const f of [1, 2, 2.5, 4, 5, 10]) {
+    if (f * mag >= target) return f * mag
+  }
+  return 10 * mag
+}
+
+function fmtValue(v: number) {
+  return String(Math.round(v))
 }
 
 function mdText(at: number) {
@@ -94,24 +122,27 @@ function periodText(fromAt: number, toAt: number) {
  * 回帰直線などでも良いが「なぜその判定になったか」を口頭で説明できることを優先した。
  * 奇数個のときは真ん中の 1 点を捨てて前後を同数にする(前半が 1 点多いと偏るため)。
  *
- * 文言について: このスコアは前のテイクとのばらつきの少なさ(一貫性)であって
+ * 文言について: この値はタイミングのばらつき(一貫性)であって
  * 音楽的な正しさではない(PRD の Risks)。「上手くなっている」と断定せず
  * 「安定してきています」までに留めること。
  */
-function summarizeTrend(scores: number[], fromAt: number, toAt: number) {
-  if (scores.length < MIN_POINTS_FOR_TREND) {
+function summarizeTrend(values: number[], metric: TrendMetric, fromAt: number, toAt: number) {
+  if (values.length < MIN_POINTS_FOR_TREND) {
     return { text: `記録が${MIN_POINTS_FOR_TREND}回に満たないため、まだ傾向は判断できません`, color: INK_MUTED }
   }
-  const half = Math.floor(scores.length / 2)
-  const delta = Math.round(average(scores.slice(scores.length - half)) - average(scores.slice(0, half)))
+  const half = Math.floor(values.length / 2)
+  const delta = Math.round(average(values.slice(values.length - half)) - average(values.slice(0, half)))
   const period = periodText(fromAt, toAt)
-  if (Math.abs(delta) < FLAT_THRESHOLD) {
+  if (Math.abs(delta) < metric.flatThreshold) {
     return { text: `${period}ほぼ横ばいです`, color: INK_SECONDARY }
   }
-  if (delta > 0) {
-    return { text: `${period}${delta}ポイント上昇 — 演奏が安定してきています`, color: INK_SUCCESS }
+  const improved = metric.lowerIsBetter ? delta < 0 : delta > 0
+  const amount = `${Math.abs(delta)}${metric.unit}`
+  const direction = delta > 0 ? '増加' : '減少'
+  if (improved) {
+    return { text: `${period}${amount}${direction} — 演奏が安定してきています`, color: INK_SUCCESS }
   }
-  return { text: `${period}${Math.abs(delta)}ポイント低下 — ばらつきが増えているようです`, color: INK_CRITICAL }
+  return { text: `${period}${amount}${direction} — ばらつきが増えているようです`, color: INK_CRITICAL }
 }
 
 // 値ラベルを点の上下どちらかに置く。上下とも入らないことはないが、
@@ -152,7 +183,7 @@ function labelsCollide(a: PlacedLabel, b: PlacedLabel) {
   return a0 - 6 < b1 && b0 - 6 < a1
 }
 
-export default function ScoreTrend({ points, height = 160, highlightIndex, onSelect }: ScoreTrendProps) {
+export default function ScoreTrend({ points, metric, height = 160, highlightIndex, onSelect }: ScoreTrendProps) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const tipRef = useRef<HTMLDivElement>(null)
   const [width, setWidth] = useState(FALLBACK_WIDTH)
@@ -191,9 +222,15 @@ export default function ScoreTrend({ points, height = 160, highlightIndex, onSel
   )
 
   const n = series.length
+  const axisMax = useMemo(
+    () => niceAxisMax(Math.max(0, ...series.map((p) => (Number.isFinite(p.value) ? p.value : 0))), metric.minAxisMax),
+    [series, metric.minAxisMax],
+  )
+  const clamp = (v: number) => clampValue(v, axisMax)
   const summary = useMemo(
-    () => summarizeTrend(series.map((p) => clampScore(p.score)), series[0]?.at ?? 0, series[n - 1]?.at ?? 0),
-    [series, n],
+    () => summarizeTrend(series.map((p) => clamp(p.value)), metric, series[0]?.at ?? 0, series[n - 1]?.at ?? 0),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [series, n, metric, axisMax],
   )
   const highlightPos = useMemo(() => {
     if (highlightIndex === undefined) return -1
@@ -207,7 +244,7 @@ export default function ScoreTrend({ points, height = 160, highlightIndex, onSel
   if (n === 0) {
     return (
       <div ref={wrapRef} style={wrapStyle}>
-        <div style={titleStyle}>安定度スコアの推移</div>
+        <div style={titleStyle}>{metric.title}</div>
         <div style={{ fontSize: 12, color: INK_MUTED, padding: '12px 0' }}>
           まだ記録がありません。録音すると、ここに推移が表示されます。
         </div>
@@ -222,11 +259,11 @@ export default function ScoreTrend({ points, height = 160, highlightIndex, onSel
   // 同じ日に何本も録ったテイクが右端で団子になり 8px のマーカーが重なって読めなくなるため。
   // 期間そのものは両端の日付ラベルと要約文が伝える。
   const xAt = (i: number) => (n <= 1 ? PAD_LEFT + plotW / 2 : PAD_LEFT + (plotW * i) / (n - 1))
-  // 縦軸は 0-100 固定。データの最小〜最大に自動フィットさせると
-  // 数ポイントの揺れが劇的な改善に見えてしまい、誤解を招く。
-  const yAt = (score: number) => PAD_TOP + plotH * (1 - clampScore(score) / 100)
+  // 縦軸は 0 〜 axisMax(niceAxisMax 参照)。下限を 0 に固定しないと、
+  // 数msの揺れが劇的な改善に見えてしまい、誤解を招く。
+  const yAt = (v: number) => PAD_TOP + plotH * (1 - clamp(v) / axisMax)
 
-  const coords = series.map((p, i) => ({ x: xAt(i), y: yAt(p.score) }))
+  const coords = series.map((p, i) => ({ x: xAt(i), y: yAt(p.value) }))
   const showAllMarkers = n <= 1 || plotW / (n - 1) >= MARKER_MIN_GAP
   const active = activePos !== null && activePos < n ? activePos : null
 
@@ -235,12 +272,12 @@ export default function ScoreTrend({ points, height = 160, highlightIndex, onSel
   const lastLabel = placeValueLabel(
     coords[lastIdx].x,
     coords[lastIdx].y,
-    String(Math.round(clampScore(series[lastIdx].score))),
+    fmtValue(clamp(series[lastIdx].value)),
     width,
     height,
   )
   let hlLabel: PlacedLabel | null = null
-  const hlText = highlightPos >= 0 ? String(Math.round(clampScore(series[highlightPos].score))) : ''
+  const hlText = highlightPos >= 0 ? fmtValue(clamp(series[highlightPos].value)) : ''
   if (highlightPos >= 0 && highlightPos !== lastIdx) {
     let candidate = placeValueLabel(coords[highlightPos].x, coords[highlightPos].y, hlText, width, height)
     if (labelsCollide(candidate, lastLabel)) {
@@ -287,7 +324,7 @@ export default function ScoreTrend({ points, height = 160, highlightIndex, onSel
   return (
     <div ref={wrapRef} style={wrapStyle}>
       {/* 系列は 1 本だけなので凡例は出さない。このタイトルが系列名を兼ねる。 */}
-      <div style={titleStyle}>安定度スコアの推移</div>
+      <div style={titleStyle}>{metric.title}</div>
       <div style={{ fontSize: 13, fontWeight: 600, color: summary.color, marginBottom: 6, lineHeight: 1.4 }}>
         {summary.text}
       </div>
@@ -300,14 +337,14 @@ export default function ScoreTrend({ points, height = 160, highlightIndex, onSel
           height={height}
           viewBox={`0 0 ${width} ${height}`}
           role="img"
-          aria-label={`安定度スコアの推移。${n}件の記録。${summary.text}`}
+          aria-label={`${metric.title}。${n}件の記録。${summary.text}`}
           style={{ display: 'block', fontFamily: 'inherit', touchAction: 'pan-y' }}
           onPointerLeave={(e) => {
             if (e.pointerType === 'mouse') setActivePos(null)
           }}
         >
-          {/* 目盛りは 0/50/100 の 3 本だけ。実線のヘアライン(破線は閾値や予測値と誤読される) */}
-          {[0, 50, 100].map((v) => (
+          {/* 目盛りは 0/中央/上限 の 3 本だけ。実線のヘアライン(破線は閾値や予測値と誤読される) */}
+          {[0, axisMax / 2, axisMax].map((v) => (
             <g key={v}>
               <line
                 x1={PAD_LEFT}
@@ -319,7 +356,7 @@ export default function ScoreTrend({ points, height = 160, highlightIndex, onSel
                 shapeRendering="crispEdges"
               />
               <text x={PAD_LEFT - 6} y={yAt(v)} dy="0.32em" textAnchor="end" fontSize={11} fill={INK_MUTED}>
-                {v}
+                {fmtValue(v)}
               </text>
             </g>
           ))}
@@ -398,7 +435,7 @@ export default function ScoreTrend({ points, height = 160, highlightIndex, onSel
             fontWeight={600}
             fill={INK_PRIMARY}
           >
-            {Math.round(clampScore(series[lastIdx].score))}
+            {fmtValue(clamp(series[lastIdx].value))}
           </text>
           {hlLabel && (
             <text x={hlLabel.x} y={hlLabel.y} textAnchor={hlLabel.anchor} fontSize={12} fontWeight={600} fill={INK_SECONDARY}>
@@ -437,7 +474,7 @@ export default function ScoreTrend({ points, height = 160, highlightIndex, onSel
                 fill="transparent"
                 tabIndex={0}
                 role={onSelect ? 'button' : 'img'}
-                aria-label={`${dateTimeText(p.at)} 安定度${Math.round(clampScore(p.score))}${p.label ? ` ${p.label}` : ''}`}
+                aria-label={`${dateTimeText(p.at)} ${fmtValue(clamp(p.value))}${metric.unit}${p.label ? ` ${p.label}` : ''}`}
                 style={{ cursor: onSelect ? 'pointer' : 'default', outline: 'none' }}
                 onPointerEnter={(e) => {
                   if (e.pointerType === 'mouse') setActivePos(i)
@@ -476,8 +513,8 @@ export default function ScoreTrend({ points, height = 160, highlightIndex, onSel
           >
             {/* 読み手は既にどの系列かを知っていて数値が欲しいので、値を先頭・強く出す */}
             <div style={{ fontSize: 16, fontWeight: 600, color: INK_PRIMARY, lineHeight: 1.2 }}>
-              {Math.round(clampScore(tipPoint.score))}
-              <span style={{ fontSize: 11, fontWeight: 400, color: INK_MUTED }}> / 100</span>
+              {fmtValue(clamp(tipPoint.value))}
+              <span style={{ fontSize: 11, fontWeight: 400, color: INK_MUTED }}> {metric.unit}</span>
             </div>
             <div style={{ fontSize: 11, color: INK_MUTED, marginTop: 2 }}>{dateTimeText(tipPoint.at)}</div>
             {tipPoint.label && (
@@ -490,8 +527,8 @@ export default function ScoreTrend({ points, height = 160, highlightIndex, onSel
 
       </div>
 
-      {/* スコアの意味を取り違えられると診断そのものが誤解されるので、必ず添える */}
-      <div style={noteStyle}>安定度は前のテイクとのばらつきの少なさを表す指標で、音楽的な正しさではありません。</div>
+      {/* 指標の意味を取り違えられると診断そのものが誤解されるので、必ず添える */}
+      <div style={noteStyle}>{metric.note}</div>
     </div>
   )
 }

@@ -165,3 +165,20 @@ button:disabled { opacity: 0.5; cursor: default; }
 
 /* スレッド詳細のスコア推移・診断のピアノロールを差し込む枠 */
 .chart-block { margin: 10px 16px; }
+
+/* 診断画面の指標は6枠に増えたので折り返す(3列×2行)。1行に6枠は420px幅では読めない */
+.metric-grid { flex-wrap: wrap; }
+.metric { flex: 1 1 28%; min-width: 0; }
+
+/* メトロノーム設定パネル(スレッド画面の録音ボタンの上) */
+.metro-panel { margin: 12px 16px 0; padding: 12px; border: 1px solid var(--gridline); border-radius: 12px; display: flex; flex-direction: column; gap: 10px; font-size: 13px; }
+.metro-row { gap: 8px; }
+.metro-row .lbl { font-size: 11px; color: var(--text-muted); min-width: 64px; }
+.metro-row input[type="number"] { width: 64px; text-align: center; font-size: 16px; font-weight: 600; padding: 4px; border: 1px solid var(--gridline); border-radius: 8px; background: var(--surface-1); color: var(--text-primary); }
+.stepper { width: 36px; height: 32px; padding: 0; border: 1px solid var(--gridline); border-radius: 8px; background: var(--surface-1); font-size: 16px; }
+
+/* カウントイン → 拍表示。離れて見ても分かるように数字を大きく */
+.count-in { margin: 4px 16px 12px; padding: 12px; text-align: center; border: 1px solid var(--gridline); border-radius: 12px; }
+.count-in .num { font-size: 56px; font-weight: 700; line-height: 1; color: var(--text-secondary); }
+.count-in .num.accent { color: var(--series-1); }
+.count-in .sub { font-size: 11px; color: var(--text-muted); margin-top: 6px; }

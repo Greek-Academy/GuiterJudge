@@ -1,6 +1,7 @@
 import db, { type DiagnosisResult, type SongThroughCompletion, type Take, type Thread } from '../db'
 import { transcribe, warmUpModel } from '../basicPitch'
 import { diagnose } from '../comparison'
+import { gridTimingForTake } from '../actions'
 import { createRng } from './rng'
 import { BB_THIRD_FLAT_SHIFTS, DEMO_PHRASES, performPhrase, type DemoPhrase, type SloppinessProfile } from './phrases'
 import { synthesizeTake } from './synth'
@@ -234,7 +235,14 @@ async function runSeed(): Promise<{ threadCount: number; takeCount: number }> {
         durationMs,
         noteEvents,
         analysisOffsetMs,
+        // 練習テイクは「メトロノームに合わせて弾いた」設定。合成音声にカウントインは無いので0拍。
+        // お手本は講師の録音を取り込んだ設定なので、メトロノーム情報は付けない
+        metronome:
+          takeSpec.role === 'normal'
+            ? { bpm: phrase.bpm, subdivision: phrase.subdivision, countInBeats: 0, beatsPerBar: 4 }
+            : undefined,
       }
+      take.gridTiming = gridTimingForTake(take)
       takeRows.push(take)
       lastActivityAt = Math.max(lastActivityAt, recordedAt)
 

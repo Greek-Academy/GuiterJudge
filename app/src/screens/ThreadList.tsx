@@ -37,18 +37,23 @@ export default function ThreadList({ onOpenThread, onOpenSongThrough, onOpenLab 
   const songThreads = useLiveQuery(() => db.threads.where({ type: 'songThrough' }).toArray(), [])
   const demoLoaded = useLiveQuery(() => hasDemoData(), [])
 
-  // 各スレッドの「最新テイクのスコア」。
+  // 各スレッドの「最新テイクのばらつき」。
+  // メトロノーム録音なら拍に対するばらつき(比較対象なしで出る)、無ければ直前比較のばらつき。
   // 以前はdb.takes.toArray()の返却順(=主キー順。idはUUIDなので実質ランダム)のまま
-  // threadIdごとに上書きしていたため、最新とは限らないテイクのスコアが出ていた。
+  // threadIdごとに上書きしていたため、最新とは限らないテイクの値が出ていた。
   // recordedAtの昇順に並べてから上書きすることで、最後に書かれる値が最新テイクのものになる。
-  const latestScores = useLiveQuery(async () => {
+  const latestBadges = useLiveQuery(async () => {
     const takes = await db.takes.where('role').equals('normal').sortBy('recordedAt')
     const results = await db.diagnosisResults.toArray()
     const byTakeId = new Map(results.map((r) => [r.takeId, r]))
-    const map = new Map<string, number>()
+    const map = new Map<string, string>()
     for (const take of takes) {
+      if (take.gridTiming) {
+        map.set(take.threadId, `ばらつき ${Math.round(take.gridTiming.jitterMs)}ms`)
+        continue
+      }
       const r = byTakeId.get(take.id)
-      if (r) map.set(take.threadId, r.stabilityScore)
+      if (r) map.set(take.threadId, `前回比 ${Math.round(r.timingJitterMs)}ms`)
     }
     return map
   }, [])
@@ -127,7 +132,7 @@ export default function ThreadList({ onOpenThread, onOpenSongThrough, onOpenLab 
           <div className="card" key={t.id} onClick={() => onOpenThread(t.id)}>
             <div className="row">
               <div className="title">{t.title}</div>
-              {latestScores?.has(t.id) && <div className="badge">安定度 {latestScores.get(t.id)}</div>}
+              {latestBadges?.has(t.id) && <div className="badge">{latestBadges.get(t.id)}</div>}
             </div>
             <div className="meta">最終更新: {new Date(t.lastActivityAt).toLocaleString('ja-JP')}</div>
           </div>

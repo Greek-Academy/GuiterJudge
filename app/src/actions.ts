@@ -1,7 +1,10 @@
-import db, { newId, type Thread, type Take, type NoteEvent } from './db'
+import db, { newId, type Thread, type Take, type NoteEvent, type MetronomeSpec } from './db'
 import { Recorder, decodeAudioBlob, extractAudioFromVideoFile } from './recording'
 import { transcribe } from './basicPitch'
 import { diagnose } from './comparison'
+import { mergeSplitNotes } from './noteCleanup'
+import { analyzeGridTiming, type GridTiming } from './gridTiming'
+import { Metronome, type BeatInfo } from './metronome'
 
 export async function createPhraseThread(title: string): Promise<string> {
   const id = newId()
@@ -19,11 +22,43 @@ export async function createSongThroughThread(title: string): Promise<string> {
   return id
 }
 
-let activeRecorder: Recorder | null = null
+/** スレッドのメトロノーム既定値を保存する(nullで「メトロノームなし」) */
+export async function setThreadMetronome(threadId: string, spec: MetronomeSpec | null): Promise<void> {
+  await db.threads.update(threadId, { metronome: spec ?? undefined })
+}
 
-export async function startRecording(): Promise<void> {
+let activeRecorder: Recorder | null = null
+let activeMetronome: Metronome | null = null
+let activeMetronomeSpec: MetronomeSpec | null = null
+
+/**
+ * 録音開始。メトロノーム設定があればカウントインから鳴らし始める。
+ * マイクの取得(許可ダイアログを含む)が終わってから鳴らす。逆順だと、
+ * ダイアログを見ている間にカウントインが進んでしまう。
+ */
+export async function startRecording(metronome?: MetronomeSpec | null, onBeat?: (b: BeatInfo) => void): Promise<void> {
   activeRecorder = new Recorder()
   await activeRecorder.start()
+  activeMetronomeSpec = metronome ?? null
+  if (metronome) {
+    activeMetronome = new Metronome(metronome, onBeat)
+    await activeMetronome.start()
+  }
+}
+
+/**
+ * メトロノーム録音のテイクの、拍の格子に対するタイミング解析。
+ * カウントイン区間(録音先頭から countInBeats 拍)は演奏していないので解析から外す。
+ * 区切りは「最後のカウントインと演奏1拍目の中間」。noteEventsの時刻は無音トリム後なので
+ * analysisOffsetMs を足して録音の時間軸に戻してから判定する。
+ */
+export function gridTimingForTake(take: Pick<Take, 'noteEvents' | 'analysisOffsetMs' | 'metronome'>): GridTiming | null {
+  if (!take.metronome || !take.noteEvents) return null
+  const beatMs = 60000 / take.metronome.bpm
+  const cutoffMs = take.metronome.countInBeats * beatMs - beatMs / 2
+  const offset = take.analysisOffsetMs ?? 0
+  const played = take.noteEvents.filter((n) => n.startMs + offset >= cutoffMs)
+  return analyzeGridTiming(mergeSplitNotes(played).notes, take.metronome)
 }
 
 /**
@@ -32,6 +67,10 @@ export async function startRecording(): Promise<void> {
  */
 export async function stopRecordingAndDiagnose(threadId: string): Promise<{ takeId: string; diagnosisId?: string }> {
   if (!activeRecorder) throw new Error('録音が開始されていません')
+  activeMetronome?.stop()
+  activeMetronome = null
+  const metronome = activeMetronomeSpec
+  activeMetronomeSpec = null
   const { blob, durationMs } = await activeRecorder.stop()
   activeRecorder = null
 
@@ -49,9 +88,11 @@ export async function stopRecordingAndDiagnose(threadId: string): Promise<{ take
     durationMs,
     noteEvents,
     analysisOffsetMs,
+    metronome: metronome ?? undefined,
   }
+  take.gridTiming = gridTimingForTake(take)
   await db.takes.add(take)
-  await db.threads.update(threadId, { lastActivityAt: Date.now() })
+  await db.threads.update(threadId, { lastActivityAt: Date.now(), ...(metronome ? { metronome } : {}) })
 
   const diagnosisId = await runDiagnosisForTake(threadId, take)
   return { takeId, diagnosisId }
@@ -88,6 +129,43 @@ async function runDiagnosisForTake(threadId: string, take: Take): Promise<string
   return diagnosisId
 }
 
+/**
+ * 「最も安定したテイク」の選び方。
+ * 以前は保存済みの安定度スコアが最大のテイクを選んでいたが、そのスコアは
+ * 「そのテイク自身が隣のテイクとどれだけ似ていたか」なので、基準としては循環していた。
+ *
+ *  - メトロノーム録音があれば、拍に対するばらつき(絶対指標)が最小のテイク。循環しない。
+ *  - 無ければメドイド: 候補どうしの相対ばらつきを総当たりで測り、他の全テイクに対する
+ *    ばらつきの中央値が最小のテイク。「一番みんなに似ている=一番代表的な弾き方」を基準にする。
+ */
+async function pickMostStableTake(threadId: string, excludeTakeId: string): Promise<Take | undefined> {
+  const candidates = (await db.takes.where({ threadId, role: 'normal' }).toArray()).filter(
+    (t) => t.id !== excludeTakeId && t.noteEvents && t.noteEvents.length > 0,
+  )
+  if (candidates.length === 0) return undefined
+  if (candidates.length === 1) return candidates[0]
+
+  const withGrid = candidates.filter((t) => t.gridTiming && t.gridTiming.jitterMs >= 0)
+  if (withGrid.length > 0) {
+    return withGrid.reduce((a, b) => (b.gridTiming!.jitterMs < a.gridTiming!.jitterMs ? b : a))
+  }
+
+  let best: Take | undefined
+  let bestMedian = Infinity
+  for (const t of candidates) {
+    const others = candidates
+      .filter((o) => o.id !== t.id)
+      .map((o) => diagnose(t.noteEvents!, o.noteEvents!).timingJitterMs)
+      .sort((a, b) => a - b)
+    const median = others[Math.floor(others.length / 2)]
+    if (median < bestMedian) {
+      bestMedian = median
+      best = t
+    }
+  }
+  return best
+}
+
 /** ComparisonViewでの比較モード切り替え(prev/best/reference)を、その場で再計算する */
 export async function recomputeDiagnosis(
   threadId: string,
@@ -109,13 +187,7 @@ export async function recomputeDiagnosis(
     )
     targetTake = normalTakes[normalTakes.length - 1]
   } else if (mode === 'best') {
-    const results = await db.diagnosisResults.toArray()
-    const threadTakeIds = new Set((await db.takes.where({ threadId, role: 'normal' }).toArray()).map((t) => t.id))
-    const candidates = results.filter((r) => threadTakeIds.has(r.takeId) && r.takeId !== takeId)
-    if (candidates.length) {
-      const best = candidates.reduce((a, b) => (b.stabilityScore > a.stabilityScore ? b : a))
-      targetTake = await db.takes.get(best.takeId)
-    }
+    targetTake = await pickMostStableTake(threadId, takeId)
   }
   if (!targetTake?.noteEvents) return null
   return { metrics: diagnose(targetTake.noteEvents, take.noteEvents), comparedToTakeId: targetTake.id }

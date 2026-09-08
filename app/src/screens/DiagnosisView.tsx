@@ -3,7 +3,8 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import db from '../db'
 import { recomputeDiagnosis } from '../actions'
 import { playNoteEvents } from '../preview'
-import { alignNoteSequences, type DiagnosisMetrics } from '../comparison'
+import { alignForDiagnosis, type DiagnosisMetrics } from '../comparison'
+import { LOW_CONFIDENCE } from '../gridTiming'
 import PianoRoll, { type PianoRollNote } from '../components/PianoRoll'
 
 type Props = {
@@ -12,12 +13,19 @@ type Props = {
   onBack: () => void
 }
 
+const SUBDIVISION_LABEL: Record<number, string> = { 1: '4分', 2: '8分', 3: '3連', 4: '16分' }
+
 /** 比較モードごとの「この数字が何を意味するか」。取り違えると診断の読み方を誤るので画面に出す */
 const MODE_NOTE: Record<'prev' | 'best' | 'reference', string> = {
   prev: '直前のテイクとの比較です。前回と同じように弾けているか(=一貫性)を見ています。',
-  best: 'これまでで最も安定していたテイクとの比較です。調子の良かった日を基準にどうか、を見ています。',
+  best: 'これまでで最もばらつきが小さかったテイクとの比較です。調子の良かった日を基準にどうか、を見ています。',
   reference:
-    'お手本との比較です。自己比較と違い「正しさ」に近い指標になります。自己比較のスコアが高いのにここで落ちる場合、毎回同じ間違いを安定して弾いている可能性があります。',
+    'お手本との比較です。自己比較と違い「正しさ」に近い指標になります。自己比較でばらつきが小さいのにここで一致率が落ちる場合、毎回同じ間違いを安定して弾いている可能性があります。',
+}
+
+function signed(v: number, digits = 1) {
+  const s = v.toFixed(digits)
+  return v > 0 ? `+${s}` : s
 }
 
 export default function DiagnosisView({ threadId, takeId, onBack }: Props) {
@@ -43,12 +51,18 @@ export default function DiagnosisView({ threadId, takeId, onBack }: Props) {
   }, [threadId, takeId, mode])
 
   // 診断メトリクスは集計値なので「どの音がどうズレたか」までは分からない。
-  // 表示のためにアライメントをもう一度取り直す(comparison.tsと同じ関数なので結果は一致する)。
-  const rollNotes = useMemo<PianoRollNote[]>(() => {
+  // 表示のためにアライメントをもう一度取り直す。diagnose()と同じ alignForDiagnosis を通すので
+  // (分割統合・時間補正込みで)結果は一致する。
+  const alignment = useMemo(() => {
     const ref = comparedTake?.noteEvents
     const cur = take?.noteEvents
-    if (!ref || !cur) return []
-    return alignNoteSequences(ref, cur).flatMap<PianoRollNote>((p) => {
+    if (!ref || !cur) return null
+    return alignForDiagnosis(ref, cur)
+  }, [comparedTake?.noteEvents, take?.noteEvents])
+
+  const rollNotes = useMemo<PianoRollNote[]>(() => {
+    if (!alignment) return []
+    return alignment.pairs.flatMap<PianoRollNote>((p) => {
       if (p.take && p.ref) {
         const { pitch, startMs, durationMs } = p.take
         return [{ pitch, startMs, durationMs, mark: p.ref.pitch === p.take.pitch ? 'match' : 'pitchMismatch' }]
@@ -64,15 +78,17 @@ export default function DiagnosisView({ threadId, takeId, onBack }: Props) {
       }
       return []
     })
-  }, [comparedTake?.noteEvents, take?.noteEvents])
+  }, [alignment])
 
   const ghostNotes = useMemo<PianoRollNote[] | undefined>(
-    () =>
-      comparedTake?.noteEvents?.map(({ pitch, startMs, durationMs }) => ({ pitch, startMs, durationMs })),
-    [comparedTake?.noteEvents],
+    () => alignment?.ref.map(({ pitch, startMs, durationMs }) => ({ pitch, startMs, durationMs })),
+    [alignment],
   )
 
   if (!take) return null
+
+  const grid = take.gridTiming
+  const lowConfidence = grid ? grid.confidence < LOW_CONFIDENCE : false
 
   return (
     <>
@@ -83,6 +99,53 @@ export default function DiagnosisView({ threadId, takeId, onBack }: Props) {
         <h1>診断結果</h1>
       </div>
       <div style={{ overflowY: 'auto' }}>
+        {/* 絶対指標: メトロノーム録音なら比較対象なしで出る。上に置く(これが安定度の本体) */}
+        {take.metronome && (
+          <>
+            <div className="section-title">拍に対する安定度</div>
+            {grid ? (
+              <>
+                <div className="stat-hero">
+                  <div className="lbl">音の出だしのばらつき(標準偏差)</div>
+                  <div className="val">
+                    {Math.round(grid.jitterMs)}
+                    <span style={{ fontSize: 16, fontWeight: 400, marginLeft: 4 }}>ms</span>
+                  </div>
+                  <div className="note-block" style={{ margin: '4px 0 0' }}>
+                    ♩={grid.bpm} の{SUBDIVISION_LABEL[grid.subdivision]}格子(1マス{Math.round(grid.gridMs)}ms)に対して、
+                    {grid.onsetCount}音の出だしがどれだけ散ったか。比較対象は要らず、日をまたいで比べられます。
+                  </div>
+                </div>
+                <div className="metric-grid">
+                  <div className="metric">
+                    <div className="lbl">テンポの流れ</div>
+                    <div className="val">{signed(grid.tempoDriftPct, 1)}%</div>
+                  </div>
+                  <div className="metric">
+                    <div className="lbl">格子の一致度</div>
+                    <div className="val">{Math.round(grid.confidence * 100)}%</div>
+                  </div>
+                  <div className="metric">
+                    <div className="lbl">解析した音</div>
+                    <div className="val">{grid.onsetCount}</div>
+                  </div>
+                </div>
+                {lowConfidence && (
+                  <div className="notice error">
+                    音の出だしが格子に乗っていません(一致度{Math.round(grid.confidence * 100)}%)。
+                    BPMか分割(4分/8分/16分)が演奏と合っていない可能性が高く、上のばらつきの値は信用できません。
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="note-block">
+                メトロノーム録音ですが、格子に対する解析に必要な音数が足りませんでした(カウントイン後に6音以上必要)。
+              </div>
+            )}
+          </>
+        )}
+
+        <div className="section-title">他のテイクとの比較</div>
         <div className="pill-row">
           <div className={`pill ${mode === 'prev' ? 'active' : ''}`} onClick={() => setMode('prev')}>
             直前のテイクと比較
@@ -119,26 +182,36 @@ export default function DiagnosisView({ threadId, takeId, onBack }: Props) {
         )}
         {result && (
           <>
-            <div className="stat-hero">
-              <div className="lbl">安定度スコア</div>
-              <div className="val">{result.stabilityScore}</div>
-              <div className="note-block" style={{ margin: '4px 0 0' }}>
-                ※これは「一貫性/変化」の指標であり、音楽的な正しさそのものを判定するものではありません
-              </div>
-            </div>
             <div className="metric-grid">
               <div className="metric">
                 <div className="lbl">音符一致率</div>
                 <div className="val">{Math.round(result.noteMatchRate * 100)}%</div>
               </div>
               <div className="metric">
-                <div className="lbl">タイミングのズレ</div>
-                <div className="val">{result.timingDriftMs}ms</div>
+                <div className="lbl">出だしのばらつき</div>
+                <div className="val">{Math.round(result.timingJitterMs)}ms</div>
               </div>
               <div className="metric">
                 <div className="lbl">弾き忘れ/余分な音</div>
                 <div className="val">{result.missedOrExtraNoteCount}</div>
               </div>
+              <div className="metric">
+                <div className="lbl">テンポ差</div>
+                <div className="val">{signed(result.tempoDiffPct, 1)}%</div>
+              </div>
+              <div className="metric">
+                <div className="lbl">対応が付いた音</div>
+                <div className="val">{result.alignedNoteCount}</div>
+              </div>
+              <div className="metric">
+                <div className="lbl">統合した分割音</div>
+                <div className="val">{result.mergedNoteCount}</div>
+              </div>
+            </div>
+            <div className="note-block">
+              ばらつきは、全体のオフセット({signed(result.onsetOffsetMs, 0)}ms)とテンポ差を取り除いた後の残差です。
+              出だしの間の取り方や速さの違いは不安定さとして数えていません。
+              「統合した分割音」は、鳴り続けている音に立った偽のオンセットを1音に畳んだ数で、両テイクの合計です。
             </div>
 
             {/* 以前はズレの位置を1次元の帯(deviationTimeline)だけで示していたが、
@@ -155,6 +228,7 @@ export default function DiagnosisView({ threadId, takeId, onBack }: Props) {
             )}
             <div className="note-block">
               薄い灰色は比較対象(基準)のテイクです。色付きが今回のテイクで、基準と照らし合わせた結果を表しています。
+              どちらも分割統合後の音符です。
             </div>
           </>
         )}
