@@ -34,6 +34,12 @@ npm run preview
   `noteMatchRate`、`missedOrExtraNoteCount`、`alignedNoteCount`、`mergedNoteCount`。
   廃止の根拠(合成スコアは一律シフト/テンポ差で最大減点になり、分割ゆらぎだけで14〜16点動いていた)は
   `diagnose()` のコメントに数値付きで残している
+- **オンセットの無い倍音の除去**: `src/harmonicFilter.ts`(`basicPitch.ts` の `extractNotes` から呼ぶ)。
+  Basic Pitch の後処理は melodiaTrick で「オンセットが無くてもフレーム活性が残っていれば音符にする」ため、
+  長い音の倍音(+12/+19/+24/+28)が途中から音符として紛れ込む(実録音で観測、2026-09-13)。
+  melodiaTrick 無しで後処理をもう一度回してオンセットの有無を音符に付け(再推論なし)、
+  オンセット無し × 鳴っている下の音の倍音関係、のものだけを捨てる。オンセットのある音は触らない。
+  除外数は `Take.suppressedHarmonicCount` に保存し、検証画面(M1)で ON/OFF して効果を比較できる
 - **分割統合**: `src/noteCleanup.ts`。同一音高の再オンセットが150ms以内なら「音の分割」(Appendix B わかったこと4)
   とみなして1音に畳む。診断の入力側で取り除くことで、演奏不変時の指標のゆらぎが消える。
   窓の妥当性は実録音の `reonsetIntervals()` の分布で確認すること(未検証。速い連打を含むフレーズでは短くする)

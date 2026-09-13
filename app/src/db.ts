@@ -47,6 +47,8 @@ export type Take = {
   metronome?: MetronomeSpec
   /** metronomeがある場合の、拍の格子に対するタイミング解析(比較対象なしで出る絶対指標) */
   gridTiming?: GridTiming | null
+  /** 音符起こし時に「オンセットの無い倍音」として除外した音符の数(harmonicFilter.ts)。隠さない */
+  suppressedHarmonicCount?: number
 }
 
 export type DeviationSegment = { startMs: number; endMs: number; severity: number }

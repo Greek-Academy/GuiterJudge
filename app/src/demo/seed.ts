@@ -221,7 +221,7 @@ async function runSeed(): Promise<{ threadCount: number; takeCount: number }> {
       const notes = performPhrase(phrase, takeSpec.profile, createRng(spec.rngSeed + i * 977))
       const { blob, audioBuffer, durationMs } = await synthesizeTake(notes)
       // 閾値は既定のまま。本番と同じコードパスを通すことがデモの前提なので、ここで調整はしない
-      const { noteEvents, analysisOffsetMs } = await transcribe(audioBuffer)
+      const { noteEvents, analysisOffsetMs, suppressedHarmonicCount } = await transcribe(audioBuffer)
 
       const recordedAt = timestampDaysAgo(takeSpec.daysAgo, i * 6)
       const take: Take = {
@@ -235,6 +235,7 @@ async function runSeed(): Promise<{ threadCount: number; takeCount: number }> {
         durationMs,
         noteEvents,
         analysisOffsetMs,
+        suppressedHarmonicCount,
         // 練習テイクは「メトロノームに合わせて弾いた」設定。合成音声にカウントインは無いので0拍。
         // お手本は講師の録音を取り込んだ設定なので、メトロノーム情報は付けない
         metronome:

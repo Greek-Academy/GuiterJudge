@@ -376,6 +376,7 @@ export default function ThreadDetail({ threadId, onBack, onOpenDiagnosis }: Prop
                   長さ {(t.durationMs / 1000).toFixed(1)}秒
                   {t.metronome ? ` / ♩=${t.metronome.bpm}` : ''}
                   {t.noteEvents ? ` / 音符${t.noteEvents.length}個検出` : ' / 音符起こし失敗'}
+                  {t.suppressedHarmonicCount ? ` / 倍音${t.suppressedHarmonicCount}個除外` : ''}
                 </div>
                 {t.noteEvents && (
                   <>

@@ -76,7 +76,7 @@ export async function stopRecordingAndDiagnose(threadId: string): Promise<{ take
 
   const takeId = newId()
   const audioBuffer = await decodeAudioBlob(blob)
-  const { noteEvents, analysisOffsetMs } = await transcribe(audioBuffer)
+  const { noteEvents, analysisOffsetMs, suppressedHarmonicCount } = await transcribe(audioBuffer)
 
   const take: Take = {
     id: takeId,
@@ -88,6 +88,7 @@ export async function stopRecordingAndDiagnose(threadId: string): Promise<{ take
     durationMs,
     noteEvents,
     analysisOffsetMs,
+    suppressedHarmonicCount,
     metronome: metronome ?? undefined,
   }
   take.gridTiming = gridTimingForTake(take)
@@ -197,7 +198,7 @@ export async function setReferenceTakeFromFile(threadId: string, file: File): Pr
   const isVideo = file.type.startsWith('video/')
   const audioBlob = isVideo ? await extractAudioFromVideoFile(file) : file
   const audioBuffer = await decodeAudioBlob(audioBlob)
-  const { noteEvents, analysisOffsetMs } = await transcribe(audioBuffer)
+  const { noteEvents, analysisOffsetMs, suppressedHarmonicCount } = await transcribe(audioBuffer)
 
   // スレッドにつきお手本は1件のみ。既存のものがあれば置き換える。
   // 既存が「過去テイクを昇格させたもの(案C)」の場合は削除せず通常テイクに戻す
@@ -215,6 +216,7 @@ export async function setReferenceTakeFromFile(threadId: string, file: File): Pr
     durationMs: Math.round(audioBuffer.duration * 1000),
     noteEvents,
     analysisOffsetMs,
+    suppressedHarmonicCount,
   })
   await db.threads.update(threadId, { referenceTakeId: takeId })
 }

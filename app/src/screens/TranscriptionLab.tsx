@@ -4,12 +4,12 @@ import { preprocessForAnalysis, type PreprocessResult } from '../preprocess'
 import {
   runModel,
   notesFromModelOutput,
+  extractNotes,
   preloadModel,
   DEFAULT_ONSET_THRESHOLD,
   DEFAULT_FRAME_THRESHOLD,
   DEFAULT_MIN_NOTE_FRAMES,
   GUITAR_PITCH_RANGE,
-  filterByPitchRange,
   type RawModelOutput,
 } from '../basicPitch'
 import { playNoteEvents } from '../preview'
@@ -54,6 +54,7 @@ export default function TranscriptionLab({ onBack }: { onBack: () => void }) {
   const [minNoteFrames, setMinNoteFrames] = useState(DEFAULT_MIN_NOTE_FRAMES)
 
   const [applyPitchRange, setApplyPitchRange] = useState(true)
+  const [suppressHarm, setSuppressHarm] = useState(true)
   const [expectedText, setExpectedText] = useState('')
   const [octaveTolerant, setOctaveTolerant] = useState(false)
   const [sweep, setSweep] = useState<SweepCell[] | null>(null)
@@ -62,19 +63,39 @@ export default function TranscriptionLab({ onBack }: { onBack: () => void }) {
 
   const expected = parsePitchList(expectedText)
   const range = applyPitchRange ? GUITAR_PITCH_RANGE : null
-  // 音域フィルタは閾値処理のさらに後段なので、素の結果を1回求めてから絞る
-  // (スライダー操作のたびにnotesFromModelOutputを2回走らせないため)。
-  // またピアノロールのホバーで再レンダーが起きるようになったため、useMemoで包まないと
-  // マウスを動かすたびに音符化の後処理が丸ごと走ってカクつく
-  const notesBeforeRange: NoteEvent[] = useMemo(
+  // ピアノロールのホバーで再レンダーが起きるため、useMemoで包まないと
+  // マウスを動かすたびに音符化の後処理が丸ごと走ってカクつく。
+  // 本番と同じ順序(閾値 → 音域フィルタ → 倍音除去)で通す。
+  const extracted = useMemo(
     () =>
       raw
-        ? notesFromModelOutput(raw, { onsetThreshold: onset, frameThreshold: frame, minNoteFrames, pitchRange: null })
-        : [],
+        ? extractNotes(raw, {
+            onsetThreshold: onset,
+            frameThreshold: frame,
+            minNoteFrames,
+            pitchRange: range,
+            suppressHarmonics: suppressHarm,
+          })
+        : null,
+    [raw, onset, frame, minNoteFrames, range, suppressHarm],
+  )
+  // 音域フィルタが何音落としたかを出すために、フィルタ無しの素の音数も求める
+  const rawNoteCount = useMemo(
+    () =>
+      raw
+        ? notesFromModelOutput(raw, {
+            onsetThreshold: onset,
+            frameThreshold: frame,
+            minNoteFrames,
+            pitchRange: null,
+            suppressHarmonics: false,
+          }).length
+        : 0,
     [raw, onset, frame, minNoteFrames],
   )
-  const notes: NoteEvent[] = useMemo(() => filterByPitchRange(notesBeforeRange, range), [notesBeforeRange, range])
-  const outOfRangeCount = notesBeforeRange.length - notes.length
+  const notes: NoteEvent[] = extracted?.notes ?? []
+  const suppressedHarmonics: NoteEvent[] = extracted?.suppressedHarmonics ?? []
+  const outOfRangeCount = rawNoteCount - notes.length - suppressedHarmonics.length
   const currentDiff = raw && expected.length ? pitchSequenceDiff(expected, notes.map((n) => n.pitch), octaveTolerant) : null
 
   async function analyze(buffer: AudioBuffer, label: string) {
@@ -148,7 +169,13 @@ export default function TranscriptionLab({ onBack }: { onBack: () => void }) {
     const cells: SweepCell[] = []
     for (const o of ONSET_GRID) {
       for (const f of FRAME_GRID) {
-        const detected = notesFromModelOutput(raw, { onsetThreshold: o, frameThreshold: f, minNoteFrames, pitchRange: range })
+        const detected = notesFromModelOutput(raw, {
+          onsetThreshold: o,
+          frameThreshold: f,
+          minNoteFrames,
+          pitchRange: range,
+          suppressHarmonics: suppressHarm,
+        })
         cells.push({
           onset: o,
           frame: f,
@@ -328,10 +355,21 @@ export default function TranscriptionLab({ onBack }: { onBack: () => void }) {
                 フィルタが何音を除いたかを比較できます。
               </div>
             </label>
+            <label className="note-block" style={{ display: 'block' }}>
+              <input type="checkbox" checked={suppressHarm} onChange={(e) => setSuppressHarm(e.target.checked)} />{' '}
+              オンセットの無い倍音を除去する
+              <div style={{ marginTop: 4, opacity: 0.75 }}>
+                Basic Pitch はピッキングの瞬間(オンセット)が無くてもフレーム活性が残っていれば音符を作るため、
+                長く鳴っている音の倍音(+12/+19/+24/+28半音)が途中から音符として紛れ込みます。
+                「オンセット無し × 鳴っている下の音の倍音関係」のものだけを除きます。オンセットのある音は触りません。
+                {extracted && ` 現在: オンセット無しの音符 ${extracted.onsetlessCount}音、うち倍音として除外 ${suppressedHarmonics.length}音。`}
+              </div>
+            </label>
 
             <div className="section-title">
               6. 検出結果({notes.length}音
-              {applyPitchRange && outOfRangeCount > 0 ? ` / 音域外 ${outOfRangeCount}音を除去` : ''})
+              {applyPitchRange && outOfRangeCount > 0 ? ` / 音域外 ${outOfRangeCount}音を除去` : ''}
+              {suppressedHarmonics.length > 0 ? ` / 倍音 ${suppressedHarmonics.length}音を除去` : ''})
             </div>
             {/* M1本検証で観測した倍音由来の誤検出(+12/+19/+24半音が同時刻に重なる)は、
                 音符一覧のテキストでは見つけにくい。ピアノロールにすると平行に並んだ帯として
@@ -379,6 +417,17 @@ export default function TranscriptionLab({ onBack }: { onBack: () => void }) {
                 </div>
               ))}
               {notes.length > 60 && <div>...他 {notes.length - 60} 件</div>}
+              {suppressedHarmonics.length > 0 && (
+                <>
+                  <div style={{ marginTop: 8, opacity: 0.6 }}>— 倍音として除外した音符(参考) —</div>
+                  {suppressedHarmonics.map((n, i) => (
+                    <div key={`h${i}`} style={{ opacity: 0.6 }}>
+                      ×  {pitchToName(n.pitch).padEnd(4)} start={String(n.startMs).padStart(5)}ms dur={String(n.durationMs).padStart(5)}ms
+                      amp={(n.velocity ?? 0).toFixed(2)}
+                    </div>
+                  ))}
+                </>
+              )}
             </div>
 
             <div className="section-title">7. 閾値スイープ</div>

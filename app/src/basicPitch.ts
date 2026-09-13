@@ -1,6 +1,7 @@
 import { BasicPitch, outputToNotesPoly, addPitchBendsToNoteEvents, noteFramesToTime } from '@spotify/basic-pitch'
 import type { NoteEvent } from './db'
 import { preprocessForAnalysis, ANALYSIS_SAMPLE_RATE, type PreprocessResult } from './preprocess'
+import { suppressHarmonics, type TaggedNote } from './harmonicFilter'
 
 // M1予備検証(Appendix B)で確認した、誤検出(倍音を別音符として拾う)を抑えるための閾値。
 // 実録音での再検証が必要な、暫定のデフォルト値。TranscriptionLab画面で実データに対して調整する。
@@ -101,6 +102,16 @@ export type NoteExtractionOptions = {
   minNoteFrames?: number
   /** 音域フィルタ。未指定ならGUITAR_PITCH_RANGE、nullを渡すとフィルタしない */
   pitchRange?: PitchRange | null
+  /** オンセットの無い倍音を除去する(harmonicFilter.ts)。既定 true。検証画面で効果を比較するために切れる */
+  suppressHarmonics?: boolean
+}
+
+export type ExtractedNotes = {
+  notes: NoteEvent[]
+  /** 倍音として除外した音符。隠さずに数と中身を見られるようにしておく */
+  suppressedHarmonics: NoteEvent[]
+  /** オンセット無しで生成された音符の数(音域フィルタ後・倍音除去前)。melodiaTrick経路の規模の目安 */
+  onsetlessCount: number
 }
 
 /** モデルの生出力。閾値は後処理側のパラメータなので、これを使い回せば閾値スイープに再推論は不要 */
@@ -136,36 +147,56 @@ export async function runModel(
   return { frames, onsets, contours }
 }
 
-/** モデル生出力 → 音符列。閾値はここでのみ効く */
-export function notesFromModelOutput(raw: RawModelOutput, opts?: NoteExtractionOptions): NoteEvent[] {
-  const notes = noteFramesToTime(
-    addPitchBendsToNoteEvents(
-      raw.contours,
-      outputToNotesPoly(
-        raw.frames,
-        raw.onsets,
-        opts?.onsetThreshold ?? DEFAULT_ONSET_THRESHOLD,
-        opts?.frameThreshold ?? DEFAULT_FRAME_THRESHOLD,
-        opts?.minNoteFrames ?? DEFAULT_MIN_NOTE_FRAMES,
-      ),
-    ),
-  )
+/**
+ * モデル生出力 → 音符列。閾値はここでのみ効く。
+ *
+ * outputToNotesPoly は melodiaTrick(既定ON)で「オンセットが無くてもフレーム活性が残っていれば音符にする」。
+ * これが長い音の倍音を音符として紛れ込ませる主因なので、melodiaTrick 無しでも一度回して
+ * オンセットの有無を音符ごとに付け(推論は再実行しない。後処理だけ)、
+ * オンセット無し × 鳴っている下の音の倍音関係、のものだけを除外する(harmonicFilter.ts)。
+ */
+export function extractNotes(raw: RawModelOutput, opts?: NoteExtractionOptions): ExtractedNotes {
+  const onsetThreshold = opts?.onsetThreshold ?? DEFAULT_ONSET_THRESHOLD
+  const frameThreshold = opts?.frameThreshold ?? DEFAULT_FRAME_THRESHOLD
+  const minNoteFrames = opts?.minNoteFrames ?? DEFAULT_MIN_NOTE_FRAMES
 
+  const full = outputToNotesPoly(raw.frames, raw.onsets, onsetThreshold, frameThreshold, minNoteFrames)
+  // 引数順: inferOnsets, maxFreq, minFreq, melodiaTrick。melodiaTrick だけ切る
+  const onsetOnly = outputToNotesPoly(raw.frames, raw.onsets, onsetThreshold, frameThreshold, minNoteFrames, true, null, null, false)
+  const onsetKeys = new Set(onsetOnly.map((n) => `${n.pitchMidi}:${n.startFrame}`))
+  // 開始フレームは経路によって1フレームずれることがあるので ±1 で照合する
+  const hasOnset = full.map((n) => [-1, 0, 1].some((d) => onsetKeys.has(`${n.pitchMidi}:${n.startFrame + d}`)))
+
+  // addPitchBendsToNoteEvents / noteFramesToTime はどちらも map なので順序と要素数は保たれる
+  const timed = noteFramesToTime(addPitchBendsToNoteEvents(raw.contours, full))
   const range = opts?.pitchRange === undefined ? GUITAR_PITCH_RANGE : opts.pitchRange
-
-  return filterByPitchRange(
-    notes.map((n) => ({
+  const tagged: TaggedNote[] = filterByPitchRange(
+    timed.map((n, i) => ({
       pitch: n.pitchMidi,
       startMs: Math.round(n.startTimeSeconds * 1000),
       durationMs: Math.round(n.durationSeconds * 1000),
       velocity: n.amplitude,
+      hasOnset: hasOnset[i],
     })),
     range,
   ).sort((a, b) => a.startMs - b.startMs)
+
+  const strip = ({ hasOnset: _hasOnset, ...n }: TaggedNote): NoteEvent => n
+  const onsetlessCount = tagged.filter((n) => !n.hasOnset).length
+  if (opts?.suppressHarmonics === false) {
+    return { notes: tagged.map(strip), suppressedHarmonics: [], onsetlessCount }
+  }
+  const { kept, suppressed } = suppressHarmonics(tagged)
+  return { notes: kept.map(strip), suppressedHarmonics: suppressed.map(strip), onsetlessCount }
+}
+
+/** 音符列だけが必要な呼び出し向け(閾値スイープなど) */
+export function notesFromModelOutput(raw: RawModelOutput, opts?: NoteExtractionOptions): NoteEvent[] {
+  return extractNotes(raw, opts).notes
 }
 
 /** 音域外の音符を落とす。rangeがnullなら素通し(検証画面でフィルタの効果を測るために使う) */
-export function filterByPitchRange(notes: NoteEvent[], range: PitchRange | null): NoteEvent[] {
+export function filterByPitchRange<T extends NoteEvent>(notes: T[], range: PitchRange | null): T[] {
   if (!range) return notes
   return notes.filter((n) => n.pitch >= range.min && n.pitch <= range.max)
 }
@@ -174,6 +205,8 @@ export type TranscriptionResult = {
   noteEvents: NoteEvent[]
   /** noteEventsの時刻が元音声より何msぶん前にずれているか(前処理で先頭の無音を捨てた量) */
   analysisOffsetMs: number
+  /** オンセットの無い倍音として除外した音符の数(harmonicFilter.ts) */
+  suppressedHarmonicCount: number
   preprocess: Omit<PreprocessResult, 'buffer'>
   timings: { preprocessMs: number; inferenceMs: number; postprocessMs: number }
 }
@@ -194,6 +227,7 @@ export async function transcribe(
     return {
       noteEvents: [],
       analysisOffsetMs: 0,
+      suppressedHarmonicCount: 0,
       preprocess: pre,
       timings: { preprocessMs: t1 - t0, inferenceMs: 0, postprocessMs: 0 },
     }
@@ -201,12 +235,13 @@ export async function transcribe(
 
   const raw = await runModel(buffer, opts?.onProgress)
   const t2 = performance.now()
-  const noteEvents = notesFromModelOutput(raw, opts)
+  const extracted = extractNotes(raw, opts)
   const t3 = performance.now()
 
   return {
-    noteEvents,
+    noteEvents: extracted.notes,
     analysisOffsetMs: pre.trimStartMs,
+    suppressedHarmonicCount: extracted.suppressedHarmonics.length,
     preprocess: pre,
     timings: { preprocessMs: t1 - t0, inferenceMs: t2 - t1, postprocessMs: t3 - t2 },
   }
