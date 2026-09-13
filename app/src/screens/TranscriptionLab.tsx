@@ -367,7 +367,7 @@ export default function TranscriptionLab({ onBack }: { onBack: () => void }) {
               </div>
             )}
             <div className="stack">
-              <button className="secondary" onClick={() => playNoteEvents(notes)} disabled={!notes.length}>
+              <button className="secondary" onClick={() => playNoteEvents(notes, { raw: true })} disabled={!notes.length}>
                 ▶ 検出結果を鳴らして確認
               </button>
             </div>

@@ -1,4 +1,5 @@
 import type { NoteEvent } from './db'
+import { mergeSplitNotes } from './noteCleanup'
 
 // ユーザー提案: 「入力した楽譜をプレビュー再生できるように」
 // NoteEvent[](ピッチ・開始時刻・長さ)をWeb Audio APIの発振器で単純な音に変換して再生する。
@@ -15,11 +16,22 @@ function getCtx(): AudioContext {
   return sharedCtx
 }
 
+export type PreviewOptions = {
+  /**
+   * true なら分割統合を通さず採譜の生データをそのまま鳴らす(検証画面用)。
+   * 既定は統合後。生データには「鳴り続けている音に立った偽オンセット」が約25%含まれ、
+   * そのまま鳴らすと同じ音が60〜150ms遅れてダブって聞こえる。診断が使うのは統合後の音符列なので、
+   * 通常の再生は診断と同じものを聞かせる。
+   */
+  raw?: boolean
+}
+
 /**
  * NoteEvent[]をプレビュー再生する。
  * 再生中かどうか・完了時刻をハンドリングできるよう、Promiseで完了を返す。
  */
-export async function playNoteEvents(notes: NoteEvent[]): Promise<void> {
+export async function playNoteEvents(rawNotes: NoteEvent[], opts?: PreviewOptions): Promise<void> {
+  const notes = opts?.raw ? rawNotes : mergeSplitNotes(rawNotes).notes
   if (notes.length === 0) return
   const ctx = getCtx()
   if (ctx.state === 'suspended') await ctx.resume()
