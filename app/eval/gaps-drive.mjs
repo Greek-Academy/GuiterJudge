@@ -1,20 +1,24 @@
 // ヘッドレス Chrome(CDP)で GAPS の各曲に transcribe() をかけ、結果を JSON で保存する。準備手順は eval/gaps-harness.ts の先頭。
-//   node eval/gaps-drive.mjs <gaps-dir> <results-dir> [cropSec=60] [limit=0] [--split=test] [--sweep] [--onsets=0.2,...] [--frames=0.1,...]
+//   node eval/gaps-drive.mjs <data-dir> <results-dir> [cropSec=60] [limit=0] [--split=test] [--sweep] [--onsets=0.2,...] [--frames=0.1,...] [--dataset=guitarset]
 // 既定は audio/ にある曲すべて。--split=test でメタデータの test split(30 曲)だけに絞る(学習用音声も落とした後はこちら)。
 // 結果が既にある曲は飛ばすので再実行できる。
 // --sweep: 推論1回で閾値グリッドぶんの音符列を保存する(採点は gaps-sweep.mjs)。既定グリッドは onset 0.2〜0.9、frame 0.1〜0.8(0.1 刻み)
+// --dataset=guitarset: <data-dir> を GuitarSet とみなし、奏者 05 の test 60 クリップ(audio/<id>_mic.wav、配信は /audio-guitarset/)を回す
 import fs from 'node:fs'
 import path from 'node:path'
-import { readGapsIds } from './gaps-score-lib.mjs'
+import { readGapsIds, readGuitarSetTestIds } from './gaps-score-lib.mjs'
 const flags = Object.fromEntries(process.argv.slice(2).filter((a) => a.startsWith('--')).map((a) => { const [k, v] = a.slice(2).split('='); return [k, v ?? true] }))
 const [DATA, OUT, CROP = '60', LIMIT = '0'] = process.argv.slice(2).filter((a) => !a.startsWith('--'))
 const SWEEP = flags.sweep === true
 const parseGrid = (s, dflt) => (typeof s === 'string' ? s.split(',').map(Number) : dflt)
 const ONSETS = parseGrid(flags.onsets, [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9])
 const FRAMES = parseGrid(flags.frames, [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8])
-const ids = readGapsIds(DATA, typeof flags.split === 'string' ? flags.split : undefined)
-const testIds = ids.filter((id) => fs.existsSync(path.join(DATA, 'audio', id + '.wav')))
-console.log(`targets: ${testIds.length} (split=${flags.split ?? 'all'}, ${ids.length} in metadata)${SWEEP ? `  sweep ${ONSETS.length}x${FRAMES.length}` : ''}`)
+const GUITARSET = flags.dataset === 'guitarset'
+const audioFile = (id) => (GUITARSET ? id + '_mic.wav' : id + '.wav')
+const audioRoute = GUITARSET ? '/audio-guitarset/' : '/audio/'
+const ids = GUITARSET ? readGuitarSetTestIds(DATA) : readGapsIds(DATA, typeof flags.split === 'string' ? flags.split : undefined)
+const testIds = ids.filter((id) => fs.existsSync(path.join(DATA, 'audio', audioFile(id))))
+console.log(`targets: ${testIds.length} (${GUITARSET ? 'guitarset test' : `gaps split=${flags.split ?? 'all'}`}, ${ids.length} listed)${SWEEP ? `  sweep ${ONSETS.length}x${FRAMES.length}` : ''}`)
 
 const targets = await (await fetch('http://127.0.0.1:9333/json')).json()
 const page = targets.find((t) => t.type === 'page')
@@ -44,8 +48,8 @@ for (const tid of testIds) {
   let json = null
   for (const backend of ['webgl', 'cpu']) {
     const call = SWEEP
-      ? `window.__transcribeSweep('/audio/${tid}.wav', ${Number(CROP)}, '${backend}', ${JSON.stringify(ONSETS)}, ${JSON.stringify(FRAMES)})`
-      : `window.__transcribe('/audio/${tid}.wav', ${Number(CROP)}, '${backend}')`
+      ? `window.__transcribeSweep('${audioRoute}${audioFile(tid)}', ${Number(CROP)}, '${backend}', ${JSON.stringify(ONSETS)}, ${JSON.stringify(FRAMES)})`
+      : `window.__transcribe('${audioRoute}${audioFile(tid)}', ${Number(CROP)}, '${backend}')`
     try { json = await evalJs(call); break }
     catch (e) { console.log(`${tid}  ${backend} failed: ${String(e).slice(0, 120)}`) }
   }

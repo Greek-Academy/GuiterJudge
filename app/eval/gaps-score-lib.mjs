@@ -1,4 +1,4 @@
-// GAPS 採点の共通部品: SMF パーサ、音符の1対1対応付け、P/R/F1、メタデータ CSV の split 読み取り。
+// GAPS / GuitarSet 採点の共通部品: SMF パーサ、JAMS の note_midi 読み取り、音符の1対1対応付け、P/R/F1、split の読み取り。
 // gaps-notes.mjs(固定閾値の採点)と gaps-sweep.mjs(閾値スイープの採点)から使う。
 import fs from 'node:fs'
 import path from 'node:path'
@@ -80,4 +80,22 @@ export function readGapsIds(dataDir, split) {
   const rows = parseCsv(fs.readFileSync(path.join(dataDir, 'gaps_metadata_with_splits.csv'), 'utf8'))
   const header = rows[0]; const iId = header.indexOf('id'); const iSplit = header.indexOf('split')
   return rows.slice(1).filter((r) => /^\d{3}_[A-Za-z0-9-]{5}$/.test(r[iId] ?? '') && (!split || r[iSplit] === split)).map((r) => r[iId])
+}
+
+// --- GuitarSet の JAMS 注釈。note_midi 名前空間(弦ごとに 6 本)の音符を全部まとめる。value は MIDI 番号の実数(例 46.08)なので四捨五入 ---
+export function readJamsNotes(file) {
+  const j = JSON.parse(fs.readFileSync(file, 'utf8'))
+  return j.annotations.filter((a) => a.namespace === 'note_midi').flatMap((a) => a.data.map((d) => ({ pitch: Math.round(d.value), startMs: d.time * 1000, durationMs: d.duration * 1000 }))).sort((a, b) => a.startMs - b.startMs)
+}
+
+/** 正解音符列。<data>/midi/<id>.mid(GAPS)か <data>/annotation/<id>.jams(GuitarSet)のあるほうを読む */
+export function loadRefNotes(dataDir, id) {
+  const mid = path.join(dataDir, 'midi', id + '.mid'); if (fs.existsSync(mid)) return parseMidi(fs.readFileSync(mid)).notes
+  const jams = path.join(dataDir, 'annotation', id + '.jams'); if (fs.existsSync(jams)) return readJamsNotes(jams)
+  throw new Error('no reference for ' + id)
+}
+
+/** GuitarSet の test split。train/prepare_guitarset.py と同じく奏者 05 の全クリップ(comp 30 + solo 30) */
+export function readGuitarSetTestIds(dataDir) {
+  return fs.readdirSync(path.join(dataDir, 'annotation')).filter((f) => /^05_.*\.jams$/.test(f)).map((f) => f.replace('.jams', '')).sort()
 }

@@ -1,16 +1,17 @@
 // 閾値スイープの採点。gaps-drive.mjs --sweep の出力(曲ごとに onset × frame の各組の音符列)を MIDI と照合し、
 // グリッド全体の P/R/F1 を出す。複数の結果ディレクトリ(元モデル / ファインチューニング後)を並べて比較できる。
-//   node eval/gaps-sweep.mjs <gaps-dir> <results-dir> [<results-dir> ...]
+//   node eval/gaps-sweep.mjs <data-dir> <results-dir> [<results-dir> ...]
+// <data-dir> は GAPS(midi/)でも GuitarSet(annotation/*.jams)でもよい。GuitarSet では comp / solo 別の内訳も出す
 // 採点は gaps-notes.mjs の「分割統合後・±50ms・音高一致」と同じ。cropSec は各ディレクトリの grid.json から取る
 import fs from 'node:fs'
 import path from 'node:path'
-import { parseMidi, matchNotes, prf } from './gaps-score-lib.mjs'
+import { loadRefNotes, matchNotes, prf } from './gaps-score-lib.mjs'
 
 const [,, DATA, ...DIRS] = process.argv
 if (!DATA || !DIRS.length) { console.error('usage: node eval/gaps-sweep.mjs <gaps-dir> <results-dir>...'); process.exit(1) }
 const midiCache = new Map()
 const refNotes = (id, cropMs) => {
-  if (!midiCache.has(id)) midiCache.set(id, parseMidi(fs.readFileSync(path.join(DATA, 'midi', id + '.mid'))).notes)
+  if (!midiCache.has(id)) midiCache.set(id, loadRefNotes(DATA, id))
   return midiCache.get(id).filter((n) => n.startMs < cropMs)
 }
 const pct = (x) => (100 * x).toFixed(1).padStart(5)
@@ -18,8 +19,10 @@ const pct = (x) => (100 * x).toFixed(1).padStart(5)
 function scoreDir(dir) {
   const grid = JSON.parse(fs.readFileSync(path.join(dir, 'grid.json'), 'utf8'))
   const cropMs = grid.cropSec * 1000
-  const files = fs.readdirSync(dir).filter((f) => /^\d{3}_.*\.json$/.test(f)).sort()
+  const files = fs.readdirSync(dir).filter((f) => f.endsWith('.json') && f !== 'grid.json').sort()
   const agg = new Map() // "onset/frame" -> [matched, nRef, nEst, perSongF1[]]
+  const groupAgg = new Map() // "group|onset/frame" -> [matched, nRef, nEst](GuitarSet の comp / solo)
+  const groupOf = (id) => (/_solo$/.test(id) ? 'solo' : /_comp$/.test(id) ? 'comp' : null)
   const key = (o, f) => `${o}/${f}`
   for (const f of files) {
     const id = f.replace('.json', '')
@@ -31,10 +34,14 @@ function scoreDir(dir) {
       const a = agg.get(key(c.onset, c.frame)) ?? [0, 0, 0, []]
       a[0] += m; a[1] += ref.length; a[2] += est.length; a[3].push(prf(m, ref.length, est.length).f)
       agg.set(key(c.onset, c.frame), a)
+      const g = groupOf(id)
+      if (g) { const ga = groupAgg.get(`${g}|${key(c.onset, c.frame)}`) ?? [0, 0, 0]; ga[0] += m; ga[1] += ref.length; ga[2] += est.length; groupAgg.set(`${g}|${key(c.onset, c.frame)}`, ga) }
     }
   }
   const cells = [...agg.entries()].map(([k, [m, nr, ne, fs]]) => { const [o, f] = k.split('/').map(Number); return { onset: o, frame: f, ...prf(m, nr, ne), nRef: nr, nEst: ne, medF: fs.sort((a, b) => a - b)[Math.floor(fs.length / 2)] } })
-  return { grid, files, cells }
+  const groups = {}
+  for (const [k, [m, nr, ne]] of groupAgg) { const [g, of] = k.split('|'); const [o, f] = of.split('/').map(Number); (groups[g] ??= []).push({ onset: o, frame: f, ...prf(m, nr, ne), nRef: nr, nEst: ne }) }
+  return { grid, files, cells, groups }
 }
 
 const results = DIRS.map((d) => ({ dir: d, ...scoreDir(d) }))
@@ -50,6 +57,10 @@ for (const r of results) {
   line('アプリ既定 ', dflt)
   line('最良       ', best)
   console.log('onset 別の最良 frame: ' + r.grid.onsets.map((o) => { const b = r.cells.filter((c) => c.onset === o).sort((a, b) => b.f - a.f)[0]; return `${o}→${b.frame}(${(100 * b.f).toFixed(1)})` }).join('  '))
+  for (const [g, cells] of Object.entries(r.groups)) {
+    const gb = [...cells].sort((a, b) => b.f - a.f)[0]; const atBest = cells.find((c) => c.onset === best.onset && c.frame === best.frame); const atDflt = cells.find((c) => c.onset === 0.7 && c.frame === 0.5)
+    console.log(`  ${g.padEnd(5)} 全体最良セルで P=${pct(atBest.p)}% R=${pct(atBest.r)}% F1=${pct(atBest.f)}%  既定で F1=${atDflt ? pct(atDflt.f) : '    -'}%  この群だけの最良 ${gb.onset}/${gb.frame} F1=${pct(gb.f)}%  (正解${gb.nRef}音)`)
+  }
 }
 if (results.length > 1) {
   const base = results[0]
