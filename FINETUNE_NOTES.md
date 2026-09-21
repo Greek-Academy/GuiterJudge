@@ -2,7 +2,8 @@
 
 判断したいこと: **アプリの音符起こしモデルを、GAPS でファインチューニングしたモデルに差し替えるか**。
 このドキュメントは、その判断に必要な経緯・数字・選択肢を一枚にまとめたもの。
-**結論(10 節、2026-09-21 14:40): 差し替えない。元モデルを維持する。** 4 本のファインチューニングはいずれも GAPS(クラシック)では元を僅かに上回るが、GuitarSet(スチール弦、複数ジャンル)では 3〜7 pt 下回った。
+**結論(10 節、2026-09-21 14:40): Basic Pitch のファインチューニングでは差し替えない。** 4 本はいずれも GAPS(クラシック)では元を僅かに上回るが、GuitarSet(スチール弦、複数ジャンル)では 3〜7 pt 下回った。
+**追記(11 節、15:10): GAPS 論文の公開モデルは GAPS 94.7% / GuitarSet 90.4% で Basic Pitch を 9〜14 pt 上回る。精度の問題は解決済みで、残る論点はブラウザ配置。**
 実装の手順は `train/README.md`、評価スクリプトの使い方は `app/eval/gaps-harness.ts` の先頭、仕様上の位置づけは `SPEC.md` 10 節。
 
 ## 1. 出発点
@@ -226,10 +227,56 @@ GAPS で改善した「低音弦・短い音」は GuitarSet では改善しな�
 - 学習と Chrome のスイープを同時に回すと、メモリ不足でヘッドレス Chrome のレンダラが落ち、ドライバが切断を検知できず結果が飛んだ。ドライバは切断で終了コード 2 を返すよう直し、再実行で続きから回せる(コミット済み)
 - 「学習プロセスの終了待ち」を複数スクリプトで共有すると、次の学習が同じプロセス名で始まって待ち続ける。次からは run ディレクトリの `export/` の出現を待つ
 
+## 11. 追記: 公開されている GAPS 学習済みモデルとの比較(2026-09-21 15:10)
+
+「クラギ特化でもよい」「新規モデルで Basic Pitch と戦う」という問いに対して、まず既にあるものを測った。
+GAPS 論文(Riley, Guo, Edwards, Dixon, ISMIR 2024)はベンチマークモデルを出していて、その学習済み重みが公開されている。
+
+- モデル: `guitar-gaps.pth`(Hugging Face `xavriley/midi-transcription-models`、MIT)。Kong et al. のピアノ用高解像度 CRNN(bytedance/piano_transcription、Apache 2.0)を GAPS で学習したもの。**2,470 万パラメータ、99 MB**(Basic Pitch は 18.6 万、0.74 MB)。入力 16 kHz の log-mel、10 秒区切り、onset / offset / frame / velocity を回帰
+- 推論: `hf_midi_transcription`(GitHub、MIT)。手元では `train/.venv-hfmt` に入れ、`train/eval_hfmt.py` で一括、`app/eval/midi-score.mjs` で採点(基準は Basic Pitch と同じ ±50ms・音高一致)
+
+### 11.1 結果
+
+| | GAPS test 30 曲 P / R / **F1** | GuitarSet test 60 P / R / **F1** | GuitarSet ストローク / 単音 |
+|---|---|---|---|
+| Basic Pitch 元・アプリ既定 | 84.7 / 76.2 / **80.2** | 86.9 / 76.3 / **81.3** | 77.1 / 92.5 |
+| Basic Pitch 元・最良閾値 | 80.4 / 81.7 / **81.1** | 83.7 / 79.9 / **81.7** | 78.1 / 91.9 |
+| Basic Pitch C-1(今日の最良) | 82.9 / 81.5 / **82.2** | 80.6 / 71.7 / **75.9** | 71.6 / 86.9 |
+| **公開モデル guitar-gaps.pth** | 95.5 / 93.8 / **94.7** | 90.6 / 90.2 / **90.4** | **89.4 / 93.3** |
+
+取りこぼしの内訳(正解音のうち検出できた割合):
+
+| 切り口 | Basic Pitch 元 0.7/0.5 | 公開モデル |
+|---|---|---|
+| GAPS 低音弦 / 8 音/秒超 / 音価 120ms 以下 | 68% / 64% / 63% | **93% / 90% / 93%** |
+| GuitarSet 低音弦 / 8 音/秒超 / 音価 120ms 以下 | 73% / 59% / 50% | **85% / 86% / 72%** |
+
+- GAPS で **+13.6 pt**、GuitarSet で **+8.7 pt**。曲別の最低値も GAPS 50 → 84%、GuitarSet 59 → 78% に上がる
+- Basic Pitch の弱点(低音弦・速いパッセージ・短い音・ストローク)がそのまま解消している。特に**ストロークが 78 → 89%** で、アプリの守備範囲外だった和音演奏が測れる水準になる
+- 今日 4 本回したファインチューニングが +1 pt しか動かなかったのは、データではなく **Basic Pitch の器が上限**だったと結論できる
+- 注意: GAPS test は論文と同じ 90:10 分割なので学習に使われていない。GuitarSet は公開重みの学習に含まれている可能性があり(論文には GAPS+GuitarSet で学習した版もある)、90.4% は楽観的かもしれない。論文のゼロショット値は 88.1% で、それでも Basic Pitch を 6 pt 上回る
+- 推論時間: Mac の CPU(PyTorch)で実時間の 0.10〜0.14 倍。10 秒の録音なら 1〜1.5 秒
+
+### 11.2 判断
+
+**精度の問題は解決している。残る問題は「どこで動かすか」だけ。**
+
+今のアプリは PWA でブラウザ内 TF.js 推論、オフライン前提、モデル 0.74 MB。公開モデルは 99 MB で GRU を含む。選択肢:
+
+| 案 | 内容 | 得るもの | 代償 |
+|---|---|---|---|
+| (a) ブラウザに載せる | PyTorch → ONNX → ONNX Runtime Web(WASM / WebGPU)。fp16 なら 50 MB | 設計思想(オフライン・端末内)を維持 | 初回 50 MB 配信、スマホでの速度が未知(数倍〜十数倍遅い見込み)、TF.js との二重管理 |
+| (b) 蒸留で小型化 | 公開モデルを教師にして 1〜3M パラメータの生徒を GAPS + GuitarSet で学習 | ブラウザ向きのサイズと速度 | 学習の仕事が丸ごと発生(数日)。どこまで精度が残るかは未知 |
+| (c) 推論をサーバに出す | Mac / 自宅サーバ / クラウドの Python で推論、ブラウザは音声を送る | 最短で 94% を使える。今日の venv で動く | オフライン不可、サーバ運用、録音の送信 |
+
+推奨は **(a) の実現性を 1 日で測ってから決める**: ONNX に出せるか、ヘッドレス Chrome の ORT Web(WASM)で 10 秒の録音が何秒か。数秒に収まるなら (a)、収まらないなら (c) を先に入れて (b) を並走させる。
+いずれにせよ、Basic Pitch のファインチューニングはここで打ち切る。
+
 ## 8. 成果物と再現
 
 - 学習結果: `~/dev/guitar-data/runs/gaps-ft/20260920-1613/`(run A)、`gaps-ft-b/20260921-0002/`(run B)、`gaps-ft-c1/20260921-0154/`(C-1)、`gaps-ft-c2/20260921-0314/`(C-2)。いずれも `model.best` / `export` / `tfjs` / `history.csv` / `args.txt`(タイムスタンプは UTC)
 - スイープ結果: `~/dev/guitar-data/eval/results/sweep-{orig,ft,ftb,ftc1,ftc2}-60s-test/`(GAPS。ft = run A、ftb = run B)、`sweep-{orig,ftb,ftc1,ftc2}-gs-test/`(GuitarSet)
+- 公開モデルの出力: `eval/results/hfmt-gaps-60s-test/`、`hfmt-gs-test/`(MIDI + timings.csv)。再実行 `train/.venv-hfmt/bin/python train/eval_hfmt.py`、採点 `node app/eval/midi-score.mjs ~/dev/guitar-data/{gaps,guitarset} <dir>`
 - 比較の再表示: `cd app && node eval/gaps-sweep.mjs ~/dev/guitar-data/gaps ~/dev/guitar-data/eval/results/sweep-{orig,ftb,ftc1,ftc2}-60s-test`、GuitarSet は `node eval/gaps-sweep.mjs ~/dev/guitar-data/guitarset ~/dev/guitar-data/eval/results/sweep-{orig,ftb,ftc1,ftc2}-gs-test`
 - 新しいモデルのスイープ: `~/dev/guitar-data/eval/run-sweep.sh` のモデル名を変えて実行(配信ディレクトリ `eval/serve/model-*` にシンボリックリンクを置く)
 - 学習: `train/README.md`。run B の引数は `--onset-pos-weight 0.75 --onset-neighbor-frames 2`、他は README の例のまま
