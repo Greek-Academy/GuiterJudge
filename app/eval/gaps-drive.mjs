@@ -20,16 +20,21 @@ const ids = GUITARSET ? readGuitarSetTestIds(DATA) : readGapsIds(DATA, typeof fl
 const testIds = ids.filter((id) => fs.existsSync(path.join(DATA, 'audio', audioFile(id))))
 console.log(`targets: ${testIds.length} (${GUITARSET ? 'guitarset test' : `gaps split=${flags.split ?? 'all'}`}, ${ids.length} listed)${SWEEP ? `  sweep ${ONSETS.length}x${FRAMES.length}` : ''}`)
 
-const targets = await (await fetch('http://127.0.0.1:9333/json')).json()
-const page = targets.find((t) => t.type === 'page')
+let targets = await (await fetch('http://127.0.0.1:9333/json')).json()
+let page = targets.find((t) => t.type === 'page')
+// タブが落ちて page ターゲットが無いときは新しく開く(Chrome 本体が生きていれば復帰できる)
+if (!page) { page = await (await fetch('http://127.0.0.1:9333/json/new?about:blank', { method: 'PUT' })).json(); console.log('opened a new page target') }
 const ws = new WebSocket(page.webSocketDebuggerUrl)
 await new Promise((r) => (ws.onopen = r))
-let id = 0; const pending = new Map(); const errors = []
+let id = 0; const pending = new Map(); const errors = []; let closed = false
 ws.onmessage = (ev) => { const m = JSON.parse(ev.data); if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id) }
   if (m.method === 'Runtime.exceptionThrown') errors.push(JSON.stringify(m.params.exceptionDetails).slice(0, 300))
   if (m.method === 'Runtime.consoleAPICalled' && m.params.type === 'error') errors.push(m.params.args.map((a) => a.value ?? a.description).join(' ').slice(0, 300)) }
-const send = (method, params = {}) => new Promise((r) => { const i = ++id; pending.set(i, r); ws.send(JSON.stringify({ id: i, method, params })) })
-const evalJs = async (expression) => { const r = await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true }); if (r.result.exceptionDetails) throw new Error(JSON.stringify(r.result.exceptionDetails).slice(0, 500)); return r.result.result.value }
+// レンダラが落ちる(メモリ不足など)と接続が切れ、待っていた Promise が永遠に解決しない。切断時は全部エラーにして終了コード 2 で抜ける。
+// 結果は曲ごとに保存してあるので、呼び出し側が再実行すれば続きから回る
+ws.onclose = () => { closed = true; for (const r of pending.values()) r({ closed: true }); pending.clear() }
+const send = (method, params = {}) => new Promise((r) => { if (closed) return r({ closed: true }); const i = ++id; pending.set(i, r); ws.send(JSON.stringify({ id: i, method, params })) })
+const evalJs = async (expression) => { const r = await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true }); if (r.closed) throw new Error('CDP connection closed (renderer crashed?)'); if (r.result.exceptionDetails) throw new Error(JSON.stringify(r.result.exceptionDetails).slice(0, 500)); return r.result.result.value }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 await send('Page.enable'); await send('Runtime.enable'); await send('Network.enable')
 // serve/model のシンボリックリンクを差し替えて別モデルを回すので、前回のモデルがキャッシュから出てこないようにする
@@ -52,6 +57,7 @@ for (const tid of testIds) {
       : `window.__transcribe('${audioRoute}${audioFile(tid)}', ${Number(CROP)}, '${backend}')`
     try { json = await evalJs(call); break }
     catch (e) { console.log(`${tid}  ${backend} failed: ${String(e).slice(0, 120)}`) }
+    if (closed) { console.log('CDP connection closed; exiting with code 2 so the caller can retry'); process.exit(2) }
   }
   if (json) {
     fs.writeFileSync(outFile, json)
