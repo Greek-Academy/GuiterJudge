@@ -2,6 +2,9 @@
 
   log-mel(16 kHz、n_fft 2048、hop 160 = 100 fps、229 bin、教師と同一設定)
   → mel 軸で BatchNorm → ConvBlock × 4(周波数方向だけ 1/2 プーリング)→ FC → BiGRU → onset / frame の 2 ヘッド(sigmoid)
+  → onset は frame と連結して小さな BiGRU でもう一段精密化する(教師の reg_onset_gru と同じ構成)。
+    v1(精密化なし)は onset が「音が鳴っていない音高」でも発火して精度 20% に張り付いた。frame でゲートすると 73% に上がったので、
+    そのゲートをモデル内に持たせる
 
 教師は同じトランクを frame / onset / offset / velocity に 4 本持つ(264 GFLOP / 10 秒)。生徒は 1 本 + 2 ヘッド。
 プリセットのブラウザ内速度(ORT Web WASM、Mac、10 秒あたり): s 0.11 s / m 0.29 s / l 1.08 s(FINETUNE_NOTES.md 12.2)。
@@ -43,13 +46,15 @@ class ConvBlock(nn.Module):
 
 
 class Student(nn.Module):
-    def __init__(self, ch, fc, hid, mel=MEL, dropout=0.2, momentum=0.01):
+    def __init__(self, ch, fc, hid, ref_hid=64, mel=MEL, dropout=0.2, momentum=0.01):
         super().__init__()
         self.bn0 = nn.BatchNorm2d(mel, momentum=momentum)
         self.blocks = nn.ModuleList([ConvBlock(i, o, momentum) for i, o in zip([1] + ch[:-1], ch)])
         self.fc = nn.Linear(ch[-1] * (mel // 16), fc, bias=False); self.bnf = nn.BatchNorm1d(fc, momentum=momentum)
         self.gru = nn.GRU(fc, hid, batch_first=True, bidirectional=True)
         self.onset = nn.Linear(2 * hid, 88); self.frame = nn.Linear(2 * hid, 88)
+        self.onset_ref_gru = nn.GRU(88 * 2, ref_hid, batch_first=True, bidirectional=True)
+        self.onset_ref = nn.Linear(2 * ref_hid, 88)
         self.dropout = dropout
 
     def forward(self, mel):  # (B, T, MEL) → onset, frame (B, T, 88)、いずれも確率
@@ -62,7 +67,10 @@ class Student(nn.Module):
         x = F.dropout(x, p=self.dropout, training=self.training)
         x, _ = self.gru(x)
         x = F.dropout(x, p=self.dropout, training=self.training)
-        return torch.sigmoid(self.onset(x)), torch.sigmoid(self.frame(x))
+        onset0 = torch.sigmoid(self.onset(x)); frame = torch.sigmoid(self.frame(x))
+        z, _ = self.onset_ref_gru(torch.cat([onset0, frame.detach()], dim=-1))
+        z = F.dropout(z, p=self.dropout, training=self.training)
+        return torch.sigmoid(self.onset_ref(z)), frame
 
 
 def build(preset: str) -> Student:

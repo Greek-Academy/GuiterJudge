@@ -9,7 +9,8 @@
 - 1 ステップ = 10 秒 × 16 本。MPS で約 2 秒(student-m)。300 ステップ + 評価で 1 エポック 12 分前後
 - 毎エポック: validation(GAPS 9 曲 + GuitarSet 奏者 04)の損失と音符 F1、GAPS test 30 曲(先頭 60 秒)の音符 F1 を出す。
   モデル選択は validation F1 で行い、test F1 は参考値(打ち切り判断に使う)
-- 音符化は簡易な後処理(onset の局所最大 ≥ 閾値、frame ≥ 閾値の間だけ伸ばす)。同じものを JS に移植する前提。
+- 音符化は簡易な後処理(onset の局所最大 ≥ 閾値、直後の frame ≥ ゲート、同音高 ±30ms の NMS、frame ≥ 閾値の間だけ伸ばす)。同じものを JS に移植する前提。
+  v1 の生徒は onset が鳴っていない音高でも発火し(精度 20%)、frame ゲートで 73% まで戻った。v2 では教師と同じ onset 精密化 GRU をモデルに入れた(student.py)
   教師の出力にこの後処理を掛けると GAPS validation で F1 96.7〜97.5%(Kong らの後処理と同等)なので、後処理の簡略化で精度は落ちない
 - 出力: <out>/<timestamp>/{model.best.pt, history.csv, args.json, student.onnx(mel 入力)}
 """
@@ -88,15 +89,21 @@ class Crops(torch.utils.data.IterableDataset):
 
 
 # ---------- 音符化と採点(JS に移植する前提の簡易版) ----------
-def postprocess(onset, frame, onset_thr, frame_thr, min_frames=2):
-    """onset (T,88), frame (T,88) の確率 → [(pitch, start_s, dur_s)]。onset の局所最大 ≥ 閾値で発音、frame ≥ 閾値の間だけ伸ばす"""
+def postprocess(onset, frame, onset_thr, frame_thr, gate=0.5, nms=3, look=3, min_frames=2):
+    """onset (T,88), frame (T,88) の確率 → [(pitch, start_s, dur_s)]。
+    onset の局所最大 ≥ onset_thr、かつ直後 look フレームの frame 最大 ≥ gate(鳴っていない音高の onset を捨てる)。
+    同じ音高で ±nms フレーム以内は大きいピークだけ残す。音の長さは frame ≥ frame_thr の間(次の onset まで)。JS に同じものを移植する"""
     T = onset.shape[0]; notes = []
     prev = np.vstack([np.zeros((1, 88)), onset[:-1]]); nxt = np.vstack([onset[1:], np.zeros((1, 88))])
     peaks = (onset >= onset_thr) & (onset >= prev) & (onset > nxt)
     for pi in range(88):
-        ts = np.flatnonzero(peaks[:, pi])
-        for i, t in enumerate(ts):
-            limit = ts[i + 1] if i + 1 < len(ts) else T
+        ts = [t for t in np.flatnonzero(peaks[:, pi]) if frame[t:t + look, pi].max() >= gate]
+        ts.sort(key=lambda t: -onset[t, pi]); kept = []
+        for t in ts:
+            if all(abs(t - k) > nms for k in kept): kept.append(t)
+        kept.sort()
+        for i, t in enumerate(kept):
+            limit = kept[i + 1] if i + 1 < len(kept) else T
             e = t + 1
             while e < limit and frame[e, pi] >= frame_thr: e += 1
             e = max(e, min(t + min_frames, T))
@@ -131,7 +138,7 @@ def infer_song(model, audio16k):
     T = int(np.ceil(n / SR * FPS))
     return np.concatenate(ons)[:T], np.concatenate(frs)[:T]
 
-THR_GRID = [0.3, 0.4, 0.5, 0.6, 0.7]
+THR_GRID = [(0.3, 0.0), (0.5, 0.0), (0.7, 0.0), (0.3, 0.5), (0.5, 0.5), (0.7, 0.5)]  # (onset 閾値, frame ゲート)
 
 def score_items(model, items):
     """items: [(audio16k float32, notes)] → {onset_thr: (P, R, F1)}。推論は 1 回、閾値だけ振る"""
@@ -139,7 +146,7 @@ def score_items(model, items):
     for audio, notes in items:
         on, fr = infer_song(model, audio)
         for t in THR_GRID:
-            est = postprocess(on, fr, t, args.frame_thr); a = agg[t]; a[0] += match_count(notes, est); a[1] += len(notes); a[2] += len(est)
+            est = postprocess(on, fr, t[0], args.frame_thr, gate=t[1]); a = agg[t]; a[0] += match_count(notes, est); a[1] += len(notes); a[2] += len(est)
     return {t: prf(*v) for t, v in agg.items()}
 
 def eval_npz(model, files, crop_s=60):
@@ -228,8 +235,8 @@ def main():
         vthr = max(THR_GRID, key=lambda t: vres[t][2]); vp, vr, vf = vres[vthr]
         tp, tr_, tf = tres[vthr]; tbest = max(THR_GRID, key=lambda t: tres[t][2])
         lr = opt.param_groups[0]["lr"]; sec = time.time() - t0
-        print(f"epoch {epoch}: train {tot/max(step+1,1):.4f} val {vl:.4f} | val F1 {100*vf:.1f} (P {100*vp:.1f} R {100*vr:.1f}) @thr {vthr} | GAPS test F1 {100*tf:.1f} (P {100*tp:.1f} R {100*tr_:.1f}) [test 最良 thr {tbest}: {100*tres[tbest][2]:.1f}] | pw {pw(args.pos_weight_onset):.1f} lr {lr:g} {sec:.0f}s", flush=True)
-        hist.write(f"{epoch},{tot/max(step+1,1):.5f},{vl:.5f},{vf:.4f},{vp:.4f},{vr:.4f},{tf:.4f},{tp:.4f},{tr_:.4f},{lr:g},{sec:.0f},{vthr},{tbest},{tres[tbest][2]:.4f}\n"); hist.flush()
+        print(f"epoch {epoch}: train {tot/max(step+1,1):.4f} val {vl:.4f} | val F1 {100*vf:.1f} (P {100*vp:.1f} R {100*vr:.1f}) @thr/gate {vthr} | GAPS test F1 {100*tf:.1f} (P {100*tp:.1f} R {100*tr_:.1f}) [test 最良 {tbest}: {100*tres[tbest][2]:.1f}] | pw {pw(args.pos_weight_onset):.1f} lr {lr:g} {sec:.0f}s", flush=True)
+        hist.write(f"{epoch},{tot/max(step+1,1):.5f},{vl:.5f},{vf:.4f},{vp:.4f},{vr:.4f},{tf:.4f},{tp:.4f},{tr_:.4f},{lr:g},{sec:.0f},{vthr[0]}/{vthr[1]},{tbest[0]}/{tbest[1]},{tres[tbest][2]:.4f}\n"); hist.flush()
         sched.step(-vf)
         torch.save(model.state_dict(), f"{run}/model.last.pt")
         if vf > best_val: best_val = vf; bad = 0; torch.save(model.state_dict(), f"{run}/model.best.pt")
