@@ -14,7 +14,7 @@ const parseGrid = (s, dflt) => (typeof s === 'string' ? s.split(',').map(Number)
 const ONSETS = parseGrid(flags.onsets, [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9])
 const FRAMES = parseGrid(flags.frames, [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8])
 const GUITARSET = flags.dataset === 'guitarset'
-const audioFile = (id) => (GUITARSET ? id + '_mic.wav' : id + '.wav')
+const audioFile = (id) => encodeURIComponent(GUITARSET ? id + '_mic.wav' : id + '.wav') // GuitarSet の C# などの # は URL フラグメントになるのでエンコード
 const audioRoute = GUITARSET ? '/audio-guitarset/' : '/audio/'
 const ids = GUITARSET ? readGuitarSetTestIds(DATA) : readGapsIds(DATA, typeof flags.split === 'string' ? flags.split : undefined)
 const testIds = ids.filter((id) => fs.existsSync(path.join(DATA, 'audio', audioFile(id))))
