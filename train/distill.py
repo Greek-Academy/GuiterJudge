@@ -38,6 +38,7 @@ ap.add_argument("--lr", type=float, default=1e-3); ap.add_argument("--gt-weight"
 ap.add_argument("--gaps-ratio", type=float, default=0.7); ap.add_argument("--device", default="mps" if torch.backends.mps.is_available() else "cpu")
 ap.add_argument("--pos-weight-onset", type=float, default=20.0, help="onset の正例側の重み(正例は 0.05% しか無く、重み無しでは出力が 0 に張り付く)")
 ap.add_argument("--pos-weight-frame", type=float, default=5.0)
+ap.add_argument("--pos-weight-anneal", type=int, default=2000, help="正例の重みをこのステップ数で線形に 1 まで下げる(0 で固定)。重み付き BCE は出力を上に較正ずれさせるので、終盤は素の BCE にする")
 ap.add_argument("--onset-thr", type=float, default=0.3); ap.add_argument("--frame-thr", type=float, default=0.3)
 ap.add_argument("--workers", type=int, default=3)
 ap.add_argument("--limit-steps", type=int, default=0, help="動作確認用。0 以外なら学習をこのステップ数で打ち切る")
@@ -130,14 +131,23 @@ def infer_song(model, audio16k):
     T = int(np.ceil(n / SR * FPS))
     return np.concatenate(ons)[:T], np.concatenate(frs)[:T]
 
+THR_GRID = [0.3, 0.4, 0.5, 0.6, 0.7]
+
+def score_items(model, items):
+    """items: [(audio16k float32, notes)] → {onset_thr: (P, R, F1)}。推論は 1 回、閾値だけ振る"""
+    agg = {t: [0, 0, 0] for t in THR_GRID}
+    for audio, notes in items:
+        on, fr = infer_song(model, audio)
+        for t in THR_GRID:
+            est = postprocess(on, fr, t, args.frame_thr); a = agg[t]; a[0] += match_count(notes, est); a[1] += len(notes); a[2] += len(est)
+    return {t: prf(*v) for t, v in agg.items()}
+
 def eval_npz(model, files, crop_s=60):
-    """validation npz(shift 0)で音符 F1(先頭 crop_s 秒)"""
-    M = NR = NE = 0
+    """validation npz(shift 0)で音符 F1(先頭 crop_s 秒)、閾値グリッドごと"""
+    items = []
     for f in files:
-        z = np.load(f); audio = z["audio"][:crop_s * SR].astype(np.float32) / 32767; notes = [tuple(n) for n in z["notes"] if n[1] < crop_s]
-        on, fr = infer_song(model, audio); est = postprocess(on, fr, args.onset_thr, args.frame_thr)
-        M += match_count(notes, est); NR += len(notes); NE += len(est)
-    return prf(M, NR, NE)
+        z = np.load(f); items.append((z["audio"][:crop_s * SR].astype(np.float32) / 32767, [tuple(n) for n in z["notes"] if n[1] < crop_s]))
+    return score_items(model, items)
 
 def midi_notes(path):
     import mido
@@ -169,11 +179,7 @@ class GapsTest:
             notes = [(p, s, d) for p, s, d in midi_notes(f"{D}/gaps/midi/{tid}.mid") if s < crop_s]
             self.items.append((tid, x.astype(np.float32), notes))
     def f1(self, model):
-        M = NR = NE = 0
-        for _, audio, notes in self.items:
-            on, fr = infer_song(model, audio); est = postprocess(on, fr, args.onset_thr, args.frame_thr)
-            M += match_count(notes, est); NR += len(notes); NE += len(est)
-        return prf(M, NR, NE)
+        return score_items(model, [(a, n) for _, a, n in self.items])
 
 def main():
     loader = torch.utils.data.DataLoader(Crops(train_files, args.gaps_ratio), batch_size=args.batch, num_workers=args.workers, persistent_workers=args.workers > 0)
@@ -185,18 +191,22 @@ def main():
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M"); run = f"{args.out}/{stamp}"; os.makedirs(run, exist_ok=True)
     json.dump(vars(args), open(f"{run}/args.json", "w"), ensure_ascii=False, indent=1)
     gaps_test = GapsTest(); print(f"gaps test: {len(gaps_test.items)} songs", flush=True)
-    hist = open(f"{run}/history.csv", "a"); hist.write("epoch,train_loss,val_loss,val_f1,val_p,val_r,test_f1,test_p,test_r,lr,sec\n")
+    hist = open(f"{run}/history.csv", "a"); hist.write("epoch,train_loss,val_loss,val_f1,val_p,val_r,test_f1,test_p,test_r,lr,sec,val_thr,test_best_thr,test_best_f1\n")
     best_val = -1; bad = 0; it = iter(loader); step_total = 0
 
     # ギター音域(E2=40 〜 88、±2 半音の余裕)の外は損失から外す。負例の半分を捨てて不均衡を和らげる(ブラウザ側でも音域外は捨てる)
     pitch_mask = torch.zeros(88, device=dev); pitch_mask[38 - 21:] = 1
+    state = {"step": 0}
+    def pw(base):
+        if args.pos_weight_anneal <= 0: return base
+        return 1 + (base - 1) * max(0.0, 1 - state["step"] / args.pos_weight_anneal)
     def wbce(pred, target, pos_weight):
         """正例側を重くした BCE。教師のソフトターゲットにも使う(重み = 1 + (pos_weight-1)·target)"""
         w = (1 + (pos_weight - 1) * target) * pitch_mask
         return (F.binary_cross_entropy(pred, target, reduction="none") * w).sum() / w.sum()
     def loss_fn(o, f, t_on, t_fr, g_on, g_fr):
-        l_t = wbce(o, t_on, args.pos_weight_onset) + wbce(f, t_fr, args.pos_weight_frame)
-        l_g = wbce(o, g_on, args.pos_weight_onset) + wbce(f, g_fr, args.pos_weight_frame)
+        l_t = wbce(o, t_on, pw(args.pos_weight_onset)) + wbce(f, t_fr, pw(args.pos_weight_frame))
+        l_g = wbce(o, g_on, pw(args.pos_weight_onset)) + wbce(f, g_fr, pw(args.pos_weight_frame))
         return l_t + args.gt_weight * l_g
 
     for epoch in range(1, args.epochs + 1):
@@ -205,7 +215,7 @@ def main():
             mel, t_on, t_fr, g_on, g_fr = [x.to(dev) for x in next(it)]
             o, f = model(mel); loss = loss_fn(o, f, t_on, t_fr, g_on, g_fr)
             opt.zero_grad(set_to_none=True); loss.backward(); torch.nn.utils.clip_grad_norm_(model.parameters(), 3.0); opt.step()
-            tot += loss.item(); step_total += 1
+            tot += loss.item(); step_total += 1; state["step"] = step_total
             if step % 100 == 0: print(f"  ep {epoch} step {step} loss {loss.item():.4f}  {time.time()-t0:.0f}s", flush=True)
             if args.limit_steps and step_total >= args.limit_steps: break
         model.eval()
@@ -214,11 +224,14 @@ def main():
         with torch.no_grad():
             for _ in range(2):
                 mel, t_on, t_fr, g_on, g_fr = [x.to(dev) for x in next(vit)]; o, f = model(mel); vl += loss_fn(o, f, t_on, t_fr, g_on, g_fr).item() / 2
-        vp, vr, vf = eval_npz(model, val_files); tp, tr_, tf = gaps_test.f1(model)
+        vres = eval_npz(model, val_files); tres = gaps_test.f1(model)
+        vthr = max(THR_GRID, key=lambda t: vres[t][2]); vp, vr, vf = vres[vthr]
+        tp, tr_, tf = tres[vthr]; tbest = max(THR_GRID, key=lambda t: tres[t][2])
         lr = opt.param_groups[0]["lr"]; sec = time.time() - t0
-        print(f"epoch {epoch}: train {tot/max(step+1,1):.4f} val {vl:.4f} | val F1 {100*vf:.1f} (P {100*vp:.1f} R {100*vr:.1f}) | GAPS test F1 {100*tf:.1f} (P {100*tp:.1f} R {100*tr_:.1f}) | lr {lr:g} {sec:.0f}s", flush=True)
-        hist.write(f"{epoch},{tot/max(step+1,1):.5f},{vl:.5f},{vf:.4f},{vp:.4f},{vr:.4f},{tf:.4f},{tp:.4f},{tr_:.4f},{lr:g},{sec:.0f}\n"); hist.flush()
+        print(f"epoch {epoch}: train {tot/max(step+1,1):.4f} val {vl:.4f} | val F1 {100*vf:.1f} (P {100*vp:.1f} R {100*vr:.1f}) @thr {vthr} | GAPS test F1 {100*tf:.1f} (P {100*tp:.1f} R {100*tr_:.1f}) [test 最良 thr {tbest}: {100*tres[tbest][2]:.1f}] | pw {pw(args.pos_weight_onset):.1f} lr {lr:g} {sec:.0f}s", flush=True)
+        hist.write(f"{epoch},{tot/max(step+1,1):.5f},{vl:.5f},{vf:.4f},{vp:.4f},{vr:.4f},{tf:.4f},{tp:.4f},{tr_:.4f},{lr:g},{sec:.0f},{vthr},{tbest},{tres[tbest][2]:.4f}\n"); hist.flush()
         sched.step(-vf)
+        torch.save(model.state_dict(), f"{run}/model.last.pt")
         if vf > best_val: best_val = vf; bad = 0; torch.save(model.state_dict(), f"{run}/model.best.pt")
         else:
             bad += 1
