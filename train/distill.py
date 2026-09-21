@@ -138,7 +138,8 @@ def infer_song(model, audio16k):
     T = int(np.ceil(n / SR * FPS))
     return np.concatenate(ons)[:T], np.concatenate(frs)[:T]
 
-THR_GRID = [(0.3, 0.0), (0.5, 0.0), (0.7, 0.0), (0.3, 0.5), (0.5, 0.5), (0.7, 0.5)]  # (onset 閾値, frame ゲート)
+# (onset 閾値, frame ゲート)。v2 の生徒は onset のピークが低め(正解の 61% しか 0.7 に届かない)で frame が精密なので、低い onset 閾値 + 強いゲートが効く
+THR_GRID = [(0.3, 0.7), (0.3, 0.8), (0.4, 0.8), (0.5, 0.8), (0.6, 0.7), (0.7, 0.5)]
 
 def score_items(model, items):
     """items: [(audio16k float32, notes)] → {onset_thr: (P, R, F1)}。推論は 1 回、閾値だけ振る"""
@@ -171,7 +172,7 @@ def midi_notes(path):
         sec += (tick - last) * tempo / tpb / 1e6; last = tick
         if kind == "tempo": tempo = tp
         elif kind == "on": on[pitch] = sec
-        elif kind == "off" and pitch in on: out.append((pitch, on.pop(pitch), sec - on.get(pitch, sec)))
+        elif kind == "off" and pitch in on: st = on.pop(pitch); out.append((pitch, st, sec - st))
     return out
 
 class GapsTest:
