@@ -9,8 +9,10 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       workbox: {
-        // Basic Pitchのモデルファイル(.json/.bin)もオフラインキャッシュ対象に含める
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,json,bin}'],
+        // Basic Pitch のモデル(.json/.bin)、生徒モデル(.onnx)、ONNX Runtime の WASM もオフラインキャッシュ対象に含める。
+        // WASM は 14 MB あるので workbox の既定上限(2 MiB)を上げる
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,json,bin,onnx,wasm,mjs}'],
+        maximumFileSizeToCacheInBytes: 20 * 1024 * 1024,
       },
       manifest: {
         name: 'ギター上達診断アプリ',

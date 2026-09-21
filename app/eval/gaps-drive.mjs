@@ -3,6 +3,7 @@
 // 既定は audio/ にある曲すべて。--split=test でメタデータの test split(30 曲)だけに絞る(学習用音声も落とした後はこちら)。
 // 結果が既にある曲は飛ばすので再実行できる。
 // --sweep: 推論1回で閾値グリッドぶんの音符列を保存する(採点は gaps-sweep.mjs)。既定グリッドは onset 0.2〜0.9、frame 0.1〜0.8(0.1 刻み)
+// --engine=student|basic-pitch: transcribe() のエンジン(engine.ts)を切り替える
 // --dataset=guitarset: <data-dir> を GuitarSet とみなし、奏者 05 の test 60 クリップ(audio/<id>_mic.wav、配信は /audio-guitarset/)を回す
 import fs from 'node:fs'
 import path from 'node:path'
@@ -43,6 +44,11 @@ await send('Network.setCacheDisabled', { cacheDisabled: true })
 await send('Page.navigate', { url: 'http://127.0.0.1:8765/' })
 for (let i = 0; i < 60; i++) { if (await evalJs('window.__ready === true')) break; await sleep(1000) }
 if (!(await evalJs('window.__ready === true'))) throw new Error('harness not ready: ' + errors.join('\n'))
+// --engine=student|basic-pitch: 本番と同じ transcribe() のエンジン選択(engine.ts、localStorage)。リモート URL は消す
+if (typeof flags.engine === 'string') {
+  await evalJs(`(localStorage.removeItem('remoteTranscribeUrl'), ${flags.engine === 'student' ? "localStorage.setItem('transcribeEngine','student')" : "localStorage.removeItem('transcribeEngine')"}, true)`)
+  console.log('engine:', flags.engine)
+}
 fs.mkdirSync(OUT, { recursive: true })
 if (SWEEP) fs.writeFileSync(path.join(OUT, 'grid.json'), JSON.stringify({ onsets: ONSETS, frames: FRAMES, cropSec: Number(CROP) }))
 let n = 0

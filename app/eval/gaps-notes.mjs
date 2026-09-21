@@ -6,10 +6,10 @@
 //    採点は mir_eval の note 指標と同じ考え方: オンセット差が許容値以内かつ音高一致で1対1に対応付け、
 //    precision / recall / F1 を出す(オフセットは見ない)。
 //
-//   node app/eval/gaps-notes.mjs <gaps-dir> <results-dir> [cropSec=60]
+//   node app/eval/gaps-notes.mjs <data-dir> <results-dir> [cropSec=60]   (<data-dir> は GAPS でも GuitarSet でもよい)
 import fs from 'node:fs'
 import path from 'node:path'
-import { parseMidi, matchNotes, prf } from './gaps-score-lib.mjs'
+import { loadRefNotes, matchNotes, prf } from './gaps-score-lib.mjs'
 
 const [,, DATA, RES, CROP = '60'] = process.argv
 const cropMs = Number(CROP) * 1000
@@ -32,8 +32,7 @@ const shortTally = { '<=120ms': [0, 0], '120-300ms': [0, 0], '>300ms': [0, 0] }
 for (const f of files) {
   const id = f.replace('.json', '')
   const res = JSON.parse(fs.readFileSync(path.join(RES, f), 'utf8'))
-  const midi = parseMidi(fs.readFileSync(path.join(DATA, 'midi', id + '.mid')))
-  const ref = midi.notes.filter((n) => n.startMs < cropMs)
+  const ref = loadRefNotes(DATA, id).filter((n) => n.startMs < cropMs)  // GAPS は midi/、GuitarSet は annotation/*.jams
   const off = res.analysisOffsetMs
   const raw = res.noteEvents.map((n) => ({ ...n, startMs: n.startMs + off }))
   const merged = res.merged.map((n) => ({ ...n, startMs: n.startMs + off }))

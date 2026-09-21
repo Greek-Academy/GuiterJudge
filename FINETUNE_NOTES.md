@@ -382,6 +382,26 @@ v2 のエポック 12 の重みを、(onset 閾値 × frame ゲート) の広い
 - ONNX 4.1 MB。Basic Pitch(0.74 MB、F1 81)と教師(99 MB、F1 95 / 90)の間で、精度は Basic Pitch を両方で 4 pt 以上、ストロークで 6 pt 上回る
 - 採用ライン 88% にはまだ 2 pt 足りない。学習は 30 エポックまで継続中(lr は 11 エポックで半減)。終了後に最終の重みで再採点する
 
+## 16. 段階 3・4: ブラウザ統合(2026-09-22 08:30)
+
+生徒 v2(エポック 12 の重み、暫定)をアプリに載せた。
+
+- `app/src/student/logmel.ts`: 16 kHz の波形 → log-mel(n_fft 2048、hop 160、周期 Hann、反射パディング、229 mel、10·log10)。自前の radix-2 FFT。学習側(torch.stft + torchlibrosa)との差は 0.001 dB(−60 dB 以上の帯域)、10 秒で 45 ms
+- `app/src/student/postprocess.ts`: onset 局所最大 ≥ 0.3、直後 3 フレームの frame 最大 ≥ 0.8、同音高 ±3 フレームの非最大抑制、frame ≥ 0.3 の間を音の長さに。Python の postprocess と音符列が完全一致
+- `app/src/student/studentTranscribe.ts`: ONNX Runtime Web(`onnxruntime-web/wasm`、WASM 専用ビルド。既定の入口は WebGPU 込みで 28 MB の WASM を要求する)。10 秒ごとに推論して先頭 1000 フレームをつなぐ(学習側の評価と同じ)
+- `app/src/engine.ts`: `transcribe()` のエンジン選択(basic-pitch / student / remote)。検証画面「0. 推論エンジン」のラジオで切り替え、6b に Basic Pitch と並べて表示
+- 資産: `public/student/model.onnx`(4.1 MB、コミット)、`public/ort/`(ORT の WASM 14 MB、postinstall で node_modules からコピー、コミットしない)。PWA のプリキャッシュは 34 MB(上限を 20 MiB に上げた)
+
+**本番経路での結果**(ヘッドレス Chrome、`gaps-drive.mjs --engine=student`、分割統合後・±50ms):
+
+| | P | R | F1 | Basic Pitch(同じ経路) |
+|---|---|---|---|---|
+| GAPS test 30 曲 | 93.4 | 81.8 | **87.2** | 80.2 |
+
+Python 側の採点(85.8)より 1.4 pt 高いのは、音域フィルタと分割統合が余分な音を少し減らすため。推論 + 後処理は実時間の 0.068 倍(SwiftShader のヘッドレス Chrome、1 スレッド)。10 秒の録音で 0.7 秒。
+
+残り: 学習の最終エポックの重みで差し替え、GuitarSet test も本番経路で採点、スマホ実機での時間計測、TranscriptionLab での目視確認(ユーザー)。
+
 ## 8. 成果物と再現
 
 - 学習結果: `~/dev/guitar-data/runs/gaps-ft/20260920-1613/`(run A)、`gaps-ft-b/20260921-0002/`(run B)、`gaps-ft-c1/20260921-0154/`(C-1)、`gaps-ft-c2/20260921-0314/`(C-2)。いずれも `model.best` / `export` / `tfjs` / `history.csv` / `args.txt`(タイムスタンプは UTC)

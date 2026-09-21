@@ -3,7 +3,10 @@ import type { NoteEvent } from './db'
 import { preprocessForAnalysis, ANALYSIS_SAMPLE_RATE, type PreprocessResult } from './preprocess'
 import { suppressHarmonics, type TaggedNote } from './harmonicFilter'
 import { recognizeChordsFromBuffer, type ChordEvent } from './chordRecognition'
-import { getRemoteTranscribeUrl, transcribeRemote } from './remoteTranscribe'
+import { transcribeRemote, getRemoteTranscribeUrl } from './remoteTranscribe'
+import { getTranscribeEngine } from './engine'
+import { runStudentModel } from './student/studentTranscribe'
+import { notesFromStudentOutput } from './student/postprocess'
 
 // M1予備検証(Appendix B)で確認した、誤検出(倍音を別音符として拾う)を抑えるための閾値。
 // 実録音での再検証が必要な、暫定のデフォルト値。TranscriptionLab画面で実データに対して調整する。
@@ -215,8 +218,8 @@ export type TranscriptionResult = {
    */
   chordEvents: ChordEvent[]
   preprocess: Omit<PreprocessResult, 'buffer'>
-  /** 音符起こしに使ったエンジン。'remote' は remoteTranscribe.ts(公開モデルを Mac で動かす暫定手段) */
-  engine: 'basic-pitch' | 'remote'
+  /** 音符起こしに使ったエンジン(engine.ts)。'student' は蒸留した小型モデル、'remote' は公開モデルを Mac で動かす暫定手段 */
+  engine: 'basic-pitch' | 'student' | 'remote'
   timings: { preprocessMs: number; inferenceMs: number; postprocessMs: number; chordMs: number }
 }
 
@@ -244,14 +247,23 @@ export async function transcribe(
     }
   }
 
-  // リモート推論が設定されていれば Basic Pitch を回さず、公開モデルの音符列を使う。
-  // 音域フィルタだけは同じく掛ける。倍音除外(Basic Pitch の melodiaTrick 対策)は不要なので掛けない
-  const remoteUrl = getRemoteTranscribeUrl()
-  if (remoteUrl) {
-    const remote = await transcribeRemote(buffer, remoteUrl)
-    const t2 = performance.now()
+  // Basic Pitch 以外のエンジン(engine.ts)。音域フィルタだけは同じく掛ける。
+  // 倍音除外(Basic Pitch の melodiaTrick 対策)は不要なので掛けない
+  const engine = getTranscribeEngine()
+  if (engine !== 'basic-pitch') {
     const range = opts?.pitchRange === undefined ? GUITAR_PITCH_RANGE : opts.pitchRange
-    const noteEvents = filterByPitchRange(remote.notes, range)
+    let notes: NoteEvent[]
+    let postprocessMs = 0
+    if (engine === 'remote') {
+      notes = (await transcribeRemote(buffer, getRemoteTranscribeUrl())).notes
+    } else {
+      const raw = await runStudentModel(buffer)
+      const tp = performance.now()
+      notes = notesFromStudentOutput(raw.onset, raw.frame, raw.frames)
+      postprocessMs = performance.now() - tp
+    }
+    const t2 = performance.now()
+    const noteEvents = filterByPitchRange(notes, range)
     const chordEvents = recognizeChordsFromBuffer(buffer)
     const t3 = performance.now()
     return {
@@ -260,8 +272,8 @@ export async function transcribe(
       suppressedHarmonicCount: 0,
       chordEvents,
       preprocess: pre,
-      engine: 'remote',
-      timings: { preprocessMs: t1 - t0, inferenceMs: t2 - t1, postprocessMs: 0, chordMs: t3 - t2 },
+      engine,
+      timings: { preprocessMs: t1 - t0, inferenceMs: t2 - t1 - postprocessMs, postprocessMs, chordMs: t3 - t2 },
     }
   }
 

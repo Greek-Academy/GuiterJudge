@@ -20,7 +20,10 @@ import ChordTimeline from '../components/ChordTimeline'
 import { recognizeChords, formatProgression, DEFAULT_SEVENTH_PENALTY } from '../chordRecognition'
 import { DEFAULT_LOG_COMPRESSION } from '../chroma'
 import type { NoteEvent } from '../db'
-import { getRemoteTranscribeUrl, setRemoteTranscribeUrl, transcribeRemote, type RemoteTranscription } from '../remoteTranscribe'
+import { getRemoteTranscribeUrl, setRemoteTranscribeUrl, transcribeRemote } from '../remoteTranscribe'
+import { getTranscribeEngine, setLocalEngine } from '../engine'
+import { runStudentModel } from '../student/studentTranscribe'
+import { notesFromStudentOutput } from '../student/postprocess'
 
 // DesignDoc Section 8 / Appendix B「M1本検証への示唆」に対応する検証用画面。
 //   - 実録音をブラウザ上の本番と同じコードパス(preprocess → runModel)に通す
@@ -69,7 +72,9 @@ export default function TranscriptionLab({ onBack }: { onBack: () => void }) {
   const [sweep, setSweep] = useState<SweepCell[] | null>(null)
   // リモート推論(公開モデルを Mac で動かす暫定手段、remoteTranscribe.ts)。URL があれば Basic Pitch と並べて結果を出す
   const [remoteUrl, setRemoteUrl] = useState(getRemoteTranscribeUrl())
-  const [remote, setRemote] = useState<RemoteTranscription | null>(null)
+  const [localEngine, setLocalEngineState] = useState<'basic-pitch' | 'student'>(getTranscribeEngine() === 'student' ? 'student' : 'basic-pitch')
+  // Basic Pitch 以外のエンジン(生徒モデル / リモート)の結果。Basic Pitch は常に回して並べて比べる
+  const [remote, setRemote] = useState<{ model: string; notes: NoteEvent[]; inferenceMs: number } | null>(null)
   const [remoteError, setRemoteError] = useState<string | null>(null)
 
   const recorderRef = useRef<Recorder | null>(null)
@@ -153,6 +158,14 @@ export default function TranscriptionLab({ onBack }: { onBack: () => void }) {
         setStatus('リモート推論中(公開モデル)...')
         try {
           setRemote(await transcribeRemote(analysisBuffer, remoteUrl.trim()))
+        } catch (err) {
+          setRemoteError((err as Error).message)
+        }
+      } else if (localEngine === 'student') {
+        setStatus('生徒モデルで推論中(ONNX Runtime Web)...')
+        try {
+          const raw = await runStudentModel(analysisBuffer)
+          setRemote({ model: `生徒モデル(${fmtMs(raw.featureMs)} の特徴量計算を含む)`, notes: notesFromStudentOutput(raw.onset, raw.frame, raw.frames), inferenceMs: raw.inferenceMs + raw.featureMs })
         } catch (err) {
           setRemoteError((err as Error).message)
         }
@@ -254,8 +267,25 @@ export default function TranscriptionLab({ onBack }: { onBack: () => void }) {
         </div>
 
         <div className="section-title">0. 推論エンジン</div>
+        <div className="row" style={{ gap: 16, fontSize: 13, margin: '4px 16px' }}>
+          {(['basic-pitch', 'student'] as const).map((e) => (
+            <label key={e}>
+              <input
+                type="radio"
+                name="engine"
+                checked={localEngine === e}
+                disabled={!!remoteUrl.trim()}
+                onChange={() => {
+                  setLocalEngineState(e)
+                  setLocalEngine(e)
+                }}
+              />{' '}
+              {e === 'basic-pitch' ? 'Basic Pitch(従来、0.7 MB、GAPS test F1 81%)' : '生徒モデル(蒸留した小型 CRNN、4 MB、GAPS 86% / GuitarSet 86%)'}
+            </label>
+          ))}
+        </div>
         <label className="stack" style={{ fontSize: 12 }}>
-          リモート推論の URL(空なら Basic Pitch のみ。例: http://192.168.x.x:8770 。Mac で train/serve_transcribe.py を起動しておく)
+          リモート推論の URL(設定するとラジオより優先。例: http://192.168.x.x:8770 。Mac で train/serve_transcribe.py を起動しておく)
           <input
             type="url"
             value={remoteUrl}
@@ -266,7 +296,7 @@ export default function TranscriptionLab({ onBack }: { onBack: () => void }) {
             }}
           />
           <span style={{ color: '#666' }}>
-            設定すると本番の録音→診断もこの URL(公開モデル、GAPS test F1 94.7%)を使う。この画面では Basic Pitch と並べて表示する
+            ここで選んだエンジンは本番の録音→診断にも使われる(端末ごとの設定)。この画面では Basic Pitch を常に回し、選んだエンジンの結果を 6b に並べて表示する
           </span>
         </label>
 
@@ -526,7 +556,7 @@ export default function TranscriptionLab({ onBack }: { onBack: () => void }) {
             {(remote || remoteError) && (
               <>
                 <div className="section-title">
-                  6b. リモート推論{remote ? `(${remote.model})の結果(${filterByPitchRange(remote.notes, range).length}音、推論 ${fmtMs(remote.inferenceMs)})` : ''}
+                  6b. 別エンジン{remote ? `(${remote.model})の結果(${filterByPitchRange(remote.notes, range).length}音、推論 ${fmtMs(remote.inferenceMs)})` : ''}
                 </div>
                 {remoteError && <div style={{ color: '#b00' }}>失敗: {remoteError}</div>}
                 {remote && (
@@ -547,7 +577,7 @@ export default function TranscriptionLab({ onBack }: { onBack: () => void }) {
                     })()}
                     <div className="stack">
                       <button className="secondary" onClick={() => playNoteEvents(filterByPitchRange(remote.notes, range), { raw: true })}>
-                        ▶ リモート推論の結果を鳴らして確認
+                        ▶ 別エンジンの結果を鳴らして確認
                       </button>
                     </div>
                   </>

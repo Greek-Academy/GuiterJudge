@@ -29,3 +29,6 @@ pnpm-debug.log*
 
 # 学習時に basic_pitch のデータローダが置く検証セットのキャッシュ(数十〜数百MB)
 train/validation_set_cache_*
+
+# ONNX Runtime Web の WASM(14 MB)。app/scripts/copy-ort-wasm.mjs が postinstall で node_modules からコピーする
+app/public/ort/
