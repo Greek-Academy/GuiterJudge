@@ -3,6 +3,7 @@ import type { NoteEvent } from './db'
 import { preprocessForAnalysis, ANALYSIS_SAMPLE_RATE, type PreprocessResult } from './preprocess'
 import { suppressHarmonics, type TaggedNote } from './harmonicFilter'
 import { recognizeChordsFromBuffer, type ChordEvent } from './chordRecognition'
+import { getRemoteTranscribeUrl, transcribeRemote } from './remoteTranscribe'
 
 // M1予備検証(Appendix B)で確認した、誤検出(倍音を別音符として拾う)を抑えるための閾値。
 // 実録音での再検証が必要な、暫定のデフォルト値。TranscriptionLab画面で実データに対して調整する。
@@ -214,6 +215,8 @@ export type TranscriptionResult = {
    */
   chordEvents: ChordEvent[]
   preprocess: Omit<PreprocessResult, 'buffer'>
+  /** 音符起こしに使ったエンジン。'remote' は remoteTranscribe.ts(公開モデルを Mac で動かす暫定手段) */
+  engine: 'basic-pitch' | 'remote'
   timings: { preprocessMs: number; inferenceMs: number; postprocessMs: number; chordMs: number }
 }
 
@@ -236,7 +239,29 @@ export async function transcribe(
       suppressedHarmonicCount: 0,
       chordEvents: [],
       preprocess: pre,
+      engine: 'basic-pitch',
       timings: { preprocessMs: t1 - t0, inferenceMs: 0, postprocessMs: 0, chordMs: 0 },
+    }
+  }
+
+  // リモート推論が設定されていれば Basic Pitch を回さず、公開モデルの音符列を使う。
+  // 音域フィルタだけは同じく掛ける。倍音除外(Basic Pitch の melodiaTrick 対策)は不要なので掛けない
+  const remoteUrl = getRemoteTranscribeUrl()
+  if (remoteUrl) {
+    const remote = await transcribeRemote(buffer, remoteUrl)
+    const t2 = performance.now()
+    const range = opts?.pitchRange === undefined ? GUITAR_PITCH_RANGE : opts.pitchRange
+    const noteEvents = filterByPitchRange(remote.notes, range)
+    const chordEvents = recognizeChordsFromBuffer(buffer)
+    const t3 = performance.now()
+    return {
+      noteEvents,
+      analysisOffsetMs: pre.trimStartMs,
+      suppressedHarmonicCount: 0,
+      chordEvents,
+      preprocess: pre,
+      engine: 'remote',
+      timings: { preprocessMs: t1 - t0, inferenceMs: t2 - t1, postprocessMs: 0, chordMs: t3 - t2 },
     }
   }
 
@@ -254,6 +279,7 @@ export async function transcribe(
     suppressedHarmonicCount: extracted.suppressedHarmonics.length,
     chordEvents,
     preprocess: pre,
+    engine: 'basic-pitch',
     timings: { preprocessMs: t1 - t0, inferenceMs: t2 - t1, postprocessMs: t3 - t2, chordMs: t4 - t3 },
   }
 }

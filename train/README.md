@@ -71,6 +71,33 @@ bash export_tfjs.sh ~/dev/guitar-data/runs/gaps-ft/<timestamp>/export ~/dev/guit
 疎通確認(2026-09-21): test 3 曲を短時間学習した重みで一巡させたところ、変換後の TF.js モデルは元と同じ音符数・同じ F1 を出した
 (重みがほぼ動いていないので一致するのが正しい)。出力名の対応も一致。
 
+## 公開モデルをそのまま使う(リモート推論、暫定)
+
+GAPS 論文の著者が公開している学習済みモデル(`guitar-gaps.pth`、MIT)は GAPS test で F1 94.7%、GuitarSet test で 90.4%(Basic Pitch は 81 / 82%)。
+99 MB の CRNN でブラウザには載らないので、Mac の Python で動かし、アプリから音声を送って使う。
+
+```sh
+/opt/homebrew/bin/python3.11 -m venv .venv-hfmt && .venv-hfmt/bin/pip install "git+https://github.com/xavriley/hf_midi_transcription" soxr mido onnx onnxruntime
+.venv-hfmt/bin/midi_transcription some.wav out.mid --instrument guitar     # 初回に重みを ~/.cache/huggingface に落とす
+.venv-hfmt/bin/python serve_transcribe.py --port 8770                     # 0.0.0.0 で待つ。--device mps も可(速さは CPU と同程度)
+```
+
+アプリの「音符起こし検証」画面の「0. 推論エンジン」に `http://<Mac の LAN IP>:8770` を入れると、その端末では本番の録音→診断もこのサーバを使う(設定は localStorage)。
+空にすれば Basic Pitch に戻る。スマホから使うときは、アプリ側を LAN で開けるようにする(`vite --host`)必要がある。マイクは安全なコンテキストでしか使えないので、
+http の LAN アドレスではスマホの録音が動かない。`@vitejs/plugin-basic-ssl` で https にするか、Mac で録音したファイルを読み込む形で試す。
+
+評価と比較は `eval_hfmt.py`(GAPS / GuitarSet test を MIDI に書き出す)と `app/eval/midi-score.mjs`。ONNX 変換とブラウザ内推論の実測、蒸留の計画は `FINETUNE_NOTES.md` 11〜12 節。
+
+## 蒸留(段階 1: 教師のソフトラベル)
+
+```sh
+.venv-hfmt/bin/python distill_labels.py --shifts 0,-2,2      # ~/dev/guitar-data/distill/<dataset>/<split>/<id>_s<shift>.npz
+```
+
+GAPS train(tfrecords の validation 9 曲は validation)と GuitarSet 奏者 00〜03(04 は validation)に教師をかけ、onset / frame(100 fps × 88、uint8)、
+シフト済みの正解音符列、16 kHz 音声(int16)を保存する。ピッチシフトはリサンプリングによる速度変更(音高と時間が同時に変わる、安価)。
+教師は実時間の約 0.045 倍なので 15.5 時間 × 3 シフトで約 2 時間。途中で止めても再実行で続きから。
+
 ## 判断の記録
 
 成果の整理と差し替え判断の材料は `FINETUNE_NOTES.md`(リポジトリのルート)。

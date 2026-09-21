@@ -11,6 +11,7 @@ import {
   DEFAULT_MIN_NOTE_FRAMES,
   GUITAR_PITCH_RANGE,
   type RawModelOutput,
+  filterByPitchRange,
 } from '../basicPitch'
 import { playNoteEvents } from '../preview'
 import { parsePitchList, pitchToName, pitchSequenceDiff, type PitchDiff } from '../pitchNames'
@@ -19,6 +20,7 @@ import ChordTimeline from '../components/ChordTimeline'
 import { recognizeChords, formatProgression, DEFAULT_SEVENTH_PENALTY } from '../chordRecognition'
 import { DEFAULT_LOG_COMPRESSION } from '../chroma'
 import type { NoteEvent } from '../db'
+import { getRemoteTranscribeUrl, setRemoteTranscribeUrl, transcribeRemote, type RemoteTranscription } from '../remoteTranscribe'
 
 // DesignDoc Section 8 / Appendix B「M1本検証への示唆」に対応する検証用画面。
 //   - 実録音をブラウザ上の本番と同じコードパス(preprocess → runModel)に通す
@@ -65,6 +67,10 @@ export default function TranscriptionLab({ onBack }: { onBack: () => void }) {
   const [expectedText, setExpectedText] = useState('')
   const [octaveTolerant, setOctaveTolerant] = useState(false)
   const [sweep, setSweep] = useState<SweepCell[] | null>(null)
+  // リモート推論(公開モデルを Mac で動かす暫定手段、remoteTranscribe.ts)。URL があれば Basic Pitch と並べて結果を出す
+  const [remoteUrl, setRemoteUrl] = useState(getRemoteTranscribeUrl())
+  const [remote, setRemote] = useState<RemoteTranscription | null>(null)
+  const [remoteError, setRemoteError] = useState<string | null>(null)
 
   const recorderRef = useRef<Recorder | null>(null)
 
@@ -139,6 +145,17 @@ export default function TranscriptionLab({ onBack }: { onBack: () => void }) {
         setRaw(null)
         setStatus('有音区間が見つかりませんでした(全編が無音と判定されました)')
         return
+      }
+
+      setRemote(null)
+      setRemoteError(null)
+      if (remoteUrl.trim()) {
+        setStatus('リモート推論中(公開モデル)...')
+        try {
+          setRemote(await transcribeRemote(analysisBuffer, remoteUrl.trim()))
+        } catch (err) {
+          setRemoteError((err as Error).message)
+        }
       }
 
       const t1 = performance.now()
@@ -235,6 +252,23 @@ export default function TranscriptionLab({ onBack }: { onBack: () => void }) {
           実録音をアプリ本体と同じ処理経路に通し、Basic Pitchのonset/frame閾値を調整するための開発用画面です。
           Appendix Bの予備検証は合成音・Python版でのものなので、ここで実録音・ブラウザ実機での値に置き換えます。
         </div>
+
+        <div className="section-title">0. 推論エンジン</div>
+        <label className="stack" style={{ fontSize: 12 }}>
+          リモート推論の URL(空なら Basic Pitch のみ。例: http://192.168.x.x:8770 。Mac で train/serve_transcribe.py を起動しておく)
+          <input
+            type="url"
+            value={remoteUrl}
+            placeholder="http://192.168.x.x:8770"
+            onChange={(e) => {
+              setRemoteUrl(e.target.value)
+              setRemoteTranscribeUrl(e.target.value)
+            }}
+          />
+          <span style={{ color: '#666' }}>
+            設定すると本番の録音→診断もこの URL(公開モデル、GAPS test F1 94.7%)を使う。この画面では Basic Pitch と並べて表示する
+          </span>
+        </label>
 
         <div className="section-title">1. 音源</div>
         <div className="stack">
@@ -488,6 +522,38 @@ export default function TranscriptionLab({ onBack }: { onBack: () => void }) {
                 </>
               )}
             </div>
+
+            {(remote || remoteError) && (
+              <>
+                <div className="section-title">
+                  6b. リモート推論{remote ? `(${remote.model})の結果(${filterByPitchRange(remote.notes, range).length}音、推論 ${fmtMs(remote.inferenceMs)})` : ''}
+                </div>
+                {remoteError && <div style={{ color: '#b00' }}>失敗: {remoteError}</div>}
+                {remote && (
+                  <>
+                    <div className="chart-block">
+                      <PianoRoll notes={filterByPitchRange(remote.notes, range)} height={200} pitchRange={applyPitchRange ? GUITAR_PITCH_RANGE : undefined} />
+                    </div>
+                    {expected.length > 0 && (() => {
+                      const d = pitchSequenceDiff(expected, filterByPitchRange(remote.notes, range).map((n) => n.pitch), octaveTolerant)
+                      return (
+                        <div className="metric-grid">
+                          <div className="metric"><div className="lbl">一致</div><div className="val">{d.matched}/{expected.length}</div></div>
+                          <div className="metric"><div className="lbl">欠落</div><div className="val">{d.missed}</div></div>
+                          <div className="metric"><div className="lbl">余分</div><div className="val">{d.extra}</div></div>
+                          <div className="metric"><div className="lbl">音高違い</div><div className="val">{d.substituted}</div></div>
+                        </div>
+                      )
+                    })()}
+                    <div className="stack">
+                      <button className="secondary" onClick={() => playNoteEvents(filterByPitchRange(remote.notes, range), { raw: true })}>
+                        ▶ リモート推論の結果を鳴らして確認
+                      </button>
+                    </div>
+                  </>
+                )}
+              </>
+            )}
 
             <div className="section-title">7. 閾値スイープ</div>
             <div className="note-block">

@@ -198,6 +198,10 @@ SongThroughCompletion { id, threadId, at, durationMs, note? }
 
 ### 5.2 音符起こし（`basicPitch.ts`）
 
+**リモート推論（暫定、2026-09-21）**: `remoteTranscribe.ts`。検証画面で URL を設定すると `transcribe()` は Basic Pitch を回さず、
+Mac 上の `train/serve_transcribe.py`（GAPS 論文の公開モデル、GAPS test F1 94.7%）に前処理済み PCM を送って音符列を受け取る。
+蒸留した小型モデルをブラウザに載せるまでのつなぎで、オフラインでは動かない。経緯は `FINETUNE_NOTES.md` 11〜13 節。
+
 | パラメータ | 既定値 |
 |---|---|
 | `onsetThreshold` | 0.7 |

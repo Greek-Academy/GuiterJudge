@@ -333,6 +333,13 @@ ONNX への変換とブラウザ内 ONNX Runtime(WASM)での推論時間を測�
 
 成果物: `~/dev/guitar-data/onnx/`(教師 ONNX、生徒候補 ONNX、`web/` にプローブページ・COOP/COEP サーバ・CDP ドライバ。`node server.mjs 8766` → `node probe.mjs /student-m.onnx mel '[1,1001,229]'`)。生徒の定義はまだ使い捨てのスクリプトなので、段階 2 に入るときに `train/student.py` として置く。
 
+## 13. 進捗(2026-09-21 17:00): 段階 1 と (c) の最小版
+
+- **(c) 実装済み**: `train/serve_transcribe.py`(公開モデルの HTTP サーバ、POST /transcribe に float32 PCM)+ `app/src/remoteTranscribe.ts` + `transcribe()` の分岐(URL が設定されていれば Basic Pitch を回さず公開モデルの音符列を使う。音域フィルタは同じ、倍音除外は不要なので掛けない)+ 検証画面の「0. 推論エンジン」で URL を設定・Basic Pitch と並べて表示。
+  本番と同じ経路(ヘッドレス Chrome の `transcribe()`)で GAPS 019 を通すと **Basic Pitch F1 74.0 → リモート 95.0**。使い方は `train/README.md`
+- **段階 1 実行中**: `train/distill_labels.py` で GAPS train 270 曲 + GuitarSet 奏者 00〜04 の 300 クリップ × シフト 3 本(0, ±2 半音)。出力 `~/dev/guitar-data/distill/`。教師の onset は正解オンセットの 96%(288/300)を ±20 ms 以内で 0.5 超えで捉えていることを 1 曲で確認
+- 次: 段階 2(`train/student.py` + `train/distill.py`、student-m を PyTorch + MPS で蒸留、GAPS test 30 曲で毎エポック採点)
+
 ## 8. 成果物と再現
 
 - 学習結果: `~/dev/guitar-data/runs/gaps-ft/20260920-1613/`(run A)、`gaps-ft-b/20260921-0002/`(run B)、`gaps-ft-c1/20260921-0154/`(C-1)、`gaps-ft-c2/20260921-0314/`(C-2)。いずれも `model.best` / `export` / `tfjs` / `history.csv` / `args.txt`(タイムスタンプは UTC)
