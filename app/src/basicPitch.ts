@@ -2,6 +2,7 @@ import { BasicPitch, outputToNotesPoly, addPitchBendsToNoteEvents, noteFramesToT
 import type { NoteEvent } from './db'
 import { preprocessForAnalysis, ANALYSIS_SAMPLE_RATE, type PreprocessResult } from './preprocess'
 import { suppressHarmonics, type TaggedNote } from './harmonicFilter'
+import { recognizeChordsFromBuffer, type ChordEvent } from './chordRecognition'
 
 // M1予備検証(Appendix B)で確認した、誤検出(倍音を別音符として拾う)を抑えるための閾値。
 // 実録音での再検証が必要な、暫定のデフォルト値。TranscriptionLab画面で実データに対して調整する。
@@ -207,8 +208,13 @@ export type TranscriptionResult = {
   analysisOffsetMs: number
   /** オンセットの無い倍音として除外した音符の数(harmonicFilter.ts) */
   suppressedHarmonicCount: number
+  /**
+   * 和音認識の結果(chordRecognition.ts)。Basic Pitch とは独立した処理だが、
+   * 同じ前処理済みバッファに対して走らせるためここで一緒に返す(時間軸が noteEvents と揃う)
+   */
+  chordEvents: ChordEvent[]
   preprocess: Omit<PreprocessResult, 'buffer'>
-  timings: { preprocessMs: number; inferenceMs: number; postprocessMs: number }
+  timings: { preprocessMs: number; inferenceMs: number; postprocessMs: number; chordMs: number }
 }
 
 /**
@@ -228,8 +234,9 @@ export async function transcribe(
       noteEvents: [],
       analysisOffsetMs: 0,
       suppressedHarmonicCount: 0,
+      chordEvents: [],
       preprocess: pre,
-      timings: { preprocessMs: t1 - t0, inferenceMs: 0, postprocessMs: 0 },
+      timings: { preprocessMs: t1 - t0, inferenceMs: 0, postprocessMs: 0, chordMs: 0 },
     }
   }
 
@@ -237,13 +244,17 @@ export async function transcribe(
   const t2 = performance.now()
   const extracted = extractNotes(raw, opts)
   const t3 = performance.now()
+  // 和音認識は FFT とテンプレート照合だけなので、10秒の録音で数十ms(推論の数百分の1)
+  const chordEvents = recognizeChordsFromBuffer(buffer)
+  const t4 = performance.now()
 
   return {
     noteEvents: extracted.notes,
     analysisOffsetMs: pre.trimStartMs,
     suppressedHarmonicCount: extracted.suppressedHarmonics.length,
+    chordEvents,
     preprocess: pre,
-    timings: { preprocessMs: t1 - t0, inferenceMs: t2 - t1, postprocessMs: t3 - t2 },
+    timings: { preprocessMs: t1 - t0, inferenceMs: t2 - t1, postprocessMs: t3 - t2, chordMs: t4 - t3 },
   }
 }
 

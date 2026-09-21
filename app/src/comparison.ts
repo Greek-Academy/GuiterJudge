@@ -56,17 +56,13 @@ export function alignNoteSequences(ref: NoteEvent[], take: NoteEvent[]): NoteAli
  * b-1 がテンポ差、a が全体オフセット。どちらも「不安定さ」ではないので、
  * ばらつきを測る前に取り除く。
  */
-type TimeFit = { offsetMs: number; ratio: number }
+export type TimeFit = { offsetMs: number; ratio: number }
 
-function fitTimeMap(pairs: NoteAlignmentPair[]): TimeFit {
-  const xs: number[] = []
-  const ys: number[] = []
-  for (const p of pairs) {
-    if (p.ref && p.take) {
-      xs.push(p.ref.startMs)
-      ys.push(p.take.startMs)
-    }
-  }
+/**
+ * 対応する2つの時刻列に y = a + b * x の直線を最小二乗で当てる。
+ * b-1 がテンポ差、a が全体オフセット。音符列でもコード列でも使うので独立させている。
+ */
+export function fitLine(xs: number[], ys: number[]): TimeFit {
   const n = xs.length
   if (n < 3) return { offsetMs: 0, ratio: 1 }
   const mx = xs.reduce((a, b) => a + b, 0) / n
@@ -80,6 +76,18 @@ function fitTimeMap(pairs: NoteAlignmentPair[]): TimeFit {
   // 2音以下や全音同時刻では傾きが決まらないので比1に固定してオフセットだけ取る
   const ratio = sxx > 0 ? sxy / sxx : 1
   return { offsetMs: my - ratio * mx, ratio }
+}
+
+function fitTimeMap(pairs: NoteAlignmentPair[]): TimeFit {
+  const xs: number[] = []
+  const ys: number[] = []
+  for (const p of pairs) {
+    if (p.ref && p.take) {
+      xs.push(p.ref.startMs)
+      ys.push(p.take.startMs)
+    }
+  }
+  return fitLine(xs, ys)
 }
 
 export type DiagnosisAlignment = {

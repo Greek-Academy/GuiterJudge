@@ -4,8 +4,10 @@ import db from '../db'
 import { recomputeDiagnosis } from '../actions'
 import { playNoteEvents } from '../preview'
 import { alignForDiagnosis, type DiagnosisMetrics } from '../comparison'
+import { formatProgression, type ChordDiagnosis } from '../chordRecognition'
 import { LOW_CONFIDENCE } from '../gridTiming'
 import PianoRoll, { type PianoRollNote } from '../components/PianoRoll'
+import ChordTimeline from '../components/ChordTimeline'
 
 type Props = {
   threadId: string
@@ -30,8 +32,11 @@ function signed(v: number, digits = 1) {
 
 export default function DiagnosisView({ threadId, takeId, onBack }: Props) {
   const [mode, setMode] = useState<'prev' | 'best' | 'reference'>('prev')
-  const [result, setResult] = useState<(DiagnosisMetrics & { comparedToTakeId: string }) | null | undefined>(undefined)
+  const [result, setResult] = useState<
+    (DiagnosisMetrics & { chord: ChordDiagnosis | null; comparedToTakeId: string }) | null | undefined
+  >(undefined)
 
+  const thread = useLiveQuery(() => db.threads.get(threadId), [threadId])
   const take = useLiveQuery(() => db.takes.get(takeId), [takeId])
   const referenceTake = useLiveQuery(() => db.takes.where({ threadId, role: 'reference' }).first(), [threadId])
   const comparedTake = useLiveQuery(
@@ -43,7 +48,7 @@ export default function DiagnosisView({ threadId, takeId, onBack }: Props) {
     let cancelled = false
     setResult(undefined)
     recomputeDiagnosis(threadId, takeId, mode).then((r) => {
-      if (!cancelled) setResult(r ? { ...r.metrics, comparedToTakeId: r.comparedToTakeId } : null)
+      if (!cancelled) setResult(r ? { ...r.metrics, chord: r.chord, comparedToTakeId: r.comparedToTakeId } : null)
     })
     return () => {
       cancelled = true
@@ -89,6 +94,7 @@ export default function DiagnosisView({ threadId, takeId, onBack }: Props) {
 
   const grid = take.gridTiming
   const lowConfidence = grid ? grid.confidence < LOW_CONFIDENCE : false
+  const chordMode = thread?.chordMode === true
 
   return (
     <>
@@ -173,6 +179,59 @@ export default function DiagnosisView({ threadId, takeId, onBack }: Props) {
             </button>
           )}
         </div>
+
+        {/* 和音スレッド: コード進行の比較を音符単位の指標より先に出す。ストロークは Basic Pitch が
+            音符に分解できないので、下の音符一致率やばらつきはこのスレッドでは目安にならない */}
+        {chordMode && (
+          <>
+            <div className="section-title">コード進行</div>
+            {take.chordEvents ? (
+              result?.chord ? (
+                <>
+                  <div className="metric-grid">
+                    <div className="metric">
+                      <div className="lbl">コード一致率</div>
+                      <div className="val">{Math.round(result.chord.chordMatchRate * 100)}%</div>
+                    </div>
+                    <div className="metric">
+                      <div className="lbl">切り替えのばらつき</div>
+                      <div className="val">{Math.round(result.chord.chordChangeJitterMs)}ms</div>
+                    </div>
+                    <div className="metric">
+                      <div className="lbl">抜け/余分なコード</div>
+                      <div className="val">{result.chord.missedOrExtraChordCount}</div>
+                    </div>
+                  </div>
+                  <ChordTimeline take={take.chordEvents} pairs={result.chord.pairs} />
+                  <div className="note-block">
+                    音声を12音のクロマ(フーリエ変換)に落とし、メジャー/マイナー/7th/m7 のテンプレートと照合した結果です。
+                    「そのコードが鳴ったか」「切り替えがいつだったか」は分かりますが、6弦のうち1本だけ押さえ違えた、
+                    といった音符単位のことは分かりません。単音やアルペジオも何かのコードとして読まれます。
+                    切り替えのばらつきは、全体のオフセットとテンポ差を除いた残差です。
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="chord-progression">{formatProgression(take.chordEvents, 16) || '(コードとして読める区間がありません)'}</div>
+                  <ChordTimeline take={take.chordEvents} />
+                  {result && (
+                    <div className="note-block">比較対象のテイクに和音認識の結果が無いため、コード進行の比較は出せません。</div>
+                  )}
+                </>
+              )
+            ) : (
+              <div className="note-block">
+                このテイクには和音認識の結果がありません(和音認識を実装する前のテイクです)。スレッド画面で「和音の練習」を
+                一度OFF→ONにすると、保存してある音声から埋め直します。
+              </div>
+            )}
+            <div className="section-title">音符単位の比較</div>
+            <div className="note-block">
+              以下は音符起こし(Basic Pitch)に基づく指標です。ストロークは個々の音に安定して分解できないため、
+              和音の練習では目安にとどめてください。
+            </div>
+          </>
+        )}
 
         {result === undefined && <div className="note-block">計算中...</div>}
         {result === null && (

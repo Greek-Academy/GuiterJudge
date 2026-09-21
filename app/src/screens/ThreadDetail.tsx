@@ -9,8 +9,10 @@ import {
   clearReferenceTake,
   resolveThread,
   setThreadMetronome,
+  setThreadChordMode,
 } from '../actions'
 import { playNoteEvents } from '../preview'
+import { formatProgression } from '../chordRecognition'
 import type { BeatInfo } from '../metronome'
 import type { Subdivision } from '../gridTiming'
 import ScoreTrend, { type ScoreTrendPoint } from '../components/ScoreTrend'
@@ -91,6 +93,19 @@ export default function ThreadDetail({ threadId, onBack, onOpenDiagnosis }: Prop
     }
     return { points, takeIds, metric: RELATIVE_JITTER_METRIC }
   }, [takes, diagnosisByTake])
+
+  async function handleChordModeToggle(on: boolean) {
+    setNotice(null)
+    setBusy(true)
+    try {
+      // ONにすると、和音認識の結果が無い過去テイクを保存音声から埋める(数十ms/テイク)
+      await setThreadChordMode(threadId, on)
+    } catch (e) {
+      setNotice({ kind: 'error', text: '和音認識に失敗しました: ' + (e as Error).message })
+    } finally {
+      setBusy(false)
+    }
+  }
 
   function updateMetro(patch: Partial<MetronomeSpec>) {
     const next = { ...(metro ?? DEFAULT_METRONOME), ...patch }
@@ -181,81 +196,100 @@ export default function ThreadDetail({ threadId, onBack, onOpenDiagnosis }: Prop
         {/* メトロノーム。BPMが既知なら拍の格子に対するばらつきを1テイク単体で測れる
             (直前のテイクという動く基準に頼らない)。録音中は設定を触れないようにする */}
         {!isRecording && (
-          <div className="metro-panel">
-            <label className="row" style={{ cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                checked={metro !== null}
-                onChange={(e) => {
-                  if (e.target.checked) updateMetro({})
-                  else {
-                    setMetro(null)
-                    void setThreadMetronome(threadId, null)
-                  }
-                }}
-              />
-              <span style={{ flex: 1 }}>メトロノームに合わせて録る</span>
-            </label>
-            {metro ? (
-              <>
-                <div className="row metro-row">
-                  <span className="lbl">♩=</span>
-                  <button className="stepper" onClick={() => updateMetro({ bpm: Math.max(40, metro.bpm - 5) })}>
-                    −
-                  </button>
-                  <input
-                    type="number"
-                    min={40}
-                    max={240}
-                    value={metro.bpm}
-                    onChange={(e) => {
-                      const v = Number(e.target.value)
-                      if (Number.isFinite(v) && v >= 40 && v <= 240) updateMetro({ bpm: Math.round(v) })
-                    }}
-                  />
-                  <button className="stepper" onClick={() => updateMetro({ bpm: Math.min(240, metro.bpm + 5) })}>
-                    ＋
-                  </button>
+          <>
+            <div className="metro-panel">
+              <label className="row" style={{ cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={thread.chordMode === true}
+                  disabled={busy}
+                  onChange={(e) => void handleChordModeToggle(e.target.checked)}
+                />
+                <span style={{ flex: 1 }}>和音(ストローク)の練習</span>
+              </label>
+              {thread.chordMode && (
+                <div className="note-block" style={{ margin: 0 }}>
+                  コード進行(フーリエ変換 → 12音 → コードのテンプレート照合)を認識して、テイク間で比べます。
+                  ストロークは音符起こしが安定しないので、音符単位の指標は目安になります。
                 </div>
-                <div className="row metro-row">
-                  <span className="lbl">最小音価</span>
-                  <div className="pill-row" style={{ margin: 0, flex: 1 }}>
-                    {SUBDIVISIONS.map((s) => (
-                      <div
-                        key={s.value}
-                        className={`pill ${metro.subdivision === s.value ? 'active' : ''}`}
-                        onClick={() => updateMetro({ subdivision: s.value })}
-                      >
-                        {s.label}
-                      </div>
-                    ))}
+              )}
+            </div>
+            <div className="metro-panel">
+              <label className="row" style={{ cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={metro !== null}
+                  onChange={(e) => {
+                    if (e.target.checked) updateMetro({})
+                    else {
+                      setMetro(null)
+                      void setThreadMetronome(threadId, null)
+                    }
+                  }}
+                />
+                <span style={{ flex: 1 }}>メトロノームに合わせて録る</span>
+              </label>
+              {metro ? (
+                <>
+                  <div className="row metro-row">
+                    <span className="lbl">♩=</span>
+                    <button className="stepper" onClick={() => updateMetro({ bpm: Math.max(40, metro.bpm - 5) })}>
+                      −
+                    </button>
+                    <input
+                      type="number"
+                      min={40}
+                      max={240}
+                      value={metro.bpm}
+                      onChange={(e) => {
+                        const v = Number(e.target.value)
+                        if (Number.isFinite(v) && v >= 40 && v <= 240) updateMetro({ bpm: Math.round(v) })
+                      }}
+                    />
+                    <button className="stepper" onClick={() => updateMetro({ bpm: Math.min(240, metro.bpm + 5) })}>
+                      ＋
+                    </button>
                   </div>
-                </div>
-                <div className="row metro-row">
-                  <span className="lbl">カウントイン</span>
-                  <div className="pill-row" style={{ margin: 0, flex: 1 }}>
-                    {[0, 2, 4, 8].map((n) => (
-                      <div
-                        key={n}
-                        className={`pill ${metro.countInBeats === n ? 'active' : ''}`}
-                        onClick={() => updateMetro({ countInBeats: n })}
-                      >
-                        {n === 0 ? 'なし' : `${n}拍`}
-                      </div>
-                    ))}
+                  <div className="row metro-row">
+                    <span className="lbl">最小音価</span>
+                    <div className="pill-row" style={{ margin: 0, flex: 1 }}>
+                      {SUBDIVISIONS.map((s) => (
+                        <div
+                          key={s.value}
+                          className={`pill ${metro.subdivision === s.value ? 'active' : ''}`}
+                          onClick={() => updateMetro({ subdivision: s.value })}
+                        >
+                          {s.label}
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                  <div className="row metro-row">
+                    <span className="lbl">カウントイン</span>
+                    <div className="pill-row" style={{ margin: 0, flex: 1 }}>
+                      {[0, 2, 4, 8].map((n) => (
+                        <div
+                          key={n}
+                          className={`pill ${metro.countInBeats === n ? 'active' : ''}`}
+                          onClick={() => updateMetro({ countInBeats: n })}
+                        >
+                          {n === 0 ? 'なし' : `${n}拍`}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="meta" style={{ margin: 0 }}>
+                    クリックは5kHz付近の音なので、スピーカーで鳴らしてマイクに入っても採譜には乗りません。
+                    最小音価は演奏に含まれる一番細かい音符に合わせてください(粗いと解析が破綻します)。
+                  </div>
+                </>
+              ) : (
                 <div className="meta" style={{ margin: 0 }}>
-                  クリックは5kHz付近の音なので、スピーカーで鳴らしてマイクに入っても採譜には乗りません。
-                  最小音価は演奏に含まれる一番細かい音符に合わせてください(粗いと解析が破綻します)。
+                  メトロノームなしでも録れますが、その場合の安定度は「直前のテイクとの差」でしか測れません。
                 </div>
-              </>
-            ) : (
-              <div className="meta" style={{ margin: 0 }}>
-                メトロノームなしでも録れますが、その場合の安定度は「直前のテイクとの差」でしか測れません。
-              </div>
-            )}
-          </div>
+              )}
+            </div>
+          </>
         )}
 
         <div className="stack">
@@ -365,12 +399,20 @@ export default function ThreadDetail({ threadId, onBack, onOpenDiagnosis }: Prop
               <div className="row">
                 <div className="title">{new Date(t.recordedAt).toLocaleString('ja-JP')}</div>
                 {t.sourceType === 'demo' && <span className="badge">デモ</span>}
+                {thread.chordMode && d?.chordMatchRate !== undefined && (
+                  <span className="badge">コード一致 {Math.round(d.chordMatchRate * 100)}%</span>
+                )}
                 {t.gridTiming ? (
                   <span className="badge">ばらつき {Math.round(t.gridTiming.jitterMs)}ms</span>
                 ) : d ? (
                   <span className="badge">前回比 {Math.round(d.timingJitterMs)}ms</span>
                 ) : null}
               </div>
+              {thread.chordMode && t.chordEvents && (
+                <div className="meta" style={{ marginTop: 4 }}>
+                  {formatProgression(t.chordEvents) || 'コードとして読める区間なし'}
+                </div>
+              )}
               <div className="row" style={{ marginTop: 6 }}>
                 <div className="meta" style={{ flex: 1, marginTop: 0 }}>
                   長さ {(t.durationMs / 1000).toFixed(1)}秒

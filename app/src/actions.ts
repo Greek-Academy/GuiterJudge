@@ -1,7 +1,9 @@
-import db, { newId, type Thread, type Take, type NoteEvent, type MetronomeSpec } from './db'
+import db, { newId, type Thread, type Take, type NoteEvent, type MetronomeSpec, type DiagnosisResult } from './db'
 import { Recorder, decodeAudioBlob, extractAudioFromVideoFile } from './recording'
 import { transcribe } from './basicPitch'
 import { diagnose } from './comparison'
+import { preprocessForAnalysis } from './preprocess'
+import { recognizeChordsFromBuffer, diagnoseChords, type ChordDiagnosis } from './chordRecognition'
 import { mergeSplitNotes } from './noteCleanup'
 import { analyzeGridTiming, type GridTiming } from './gridTiming'
 import { Metronome, type BeatInfo } from './metronome'
@@ -76,7 +78,7 @@ export async function stopRecordingAndDiagnose(threadId: string): Promise<{ take
 
   const takeId = newId()
   const audioBuffer = await decodeAudioBlob(blob)
-  const { noteEvents, analysisOffsetMs, suppressedHarmonicCount } = await transcribe(audioBuffer)
+  const { noteEvents, analysisOffsetMs, suppressedHarmonicCount, chordEvents } = await transcribe(audioBuffer)
 
   const take: Take = {
     id: takeId,
@@ -89,6 +91,7 @@ export async function stopRecordingAndDiagnose(threadId: string): Promise<{ take
     noteEvents,
     analysisOffsetMs,
     suppressedHarmonicCount,
+    chordEvents,
     metronome: metronome ?? undefined,
   }
   take.gridTiming = gridTimingForTake(take)
@@ -126,8 +129,59 @@ async function runDiagnosisForTake(threadId: string, take: Take): Promise<string
     comparedToTakeId: target.take.id,
     compareMode: target.mode,
     ...metrics,
+    ...storedChordMetrics(target.take, take),
   })
   return diagnosisId
+}
+
+/** DiagnosisResult に保存するコード比較の集計値。両テイクに chordEvents が無ければ空 */
+function storedChordMetrics(
+  ref: Pick<Take, 'chordEvents'>,
+  take: Pick<Take, 'chordEvents'>,
+): Pick<DiagnosisResult, 'chordMatchRate' | 'missedOrExtraChordCount' | 'alignedChordCount' | 'chordChangeJitterMs'> {
+  if (!ref.chordEvents || !take.chordEvents) return {}
+  const c = diagnoseChords(ref.chordEvents, take.chordEvents)
+  return {
+    chordMatchRate: c.chordMatchRate,
+    missedOrExtraChordCount: c.missedOrExtraChordCount,
+    alignedChordCount: c.alignedChordCount,
+    chordChangeJitterMs: c.chordChangeJitterMs,
+  }
+}
+
+/**
+ * スレッドの「和音の練習」指定を切り替える。
+ * ONにしたとき、和音認識の実装前に録ったテイク(chordEvents 無し)があれば、保存してある音声から
+ * その場で埋める。Basic Pitch は回さず前処理+FFTだけなので1テイク数十msで済む。
+ * 埋めた後は、そのスレッドの保存済み診断にもコード比較の集計値を足す(一覧のバッジ用)。
+ */
+export async function setThreadChordMode(threadId: string, on: boolean): Promise<void> {
+  await db.threads.update(threadId, { chordMode: on })
+  if (!on) return
+  const takes = await db.takes.where({ threadId }).toArray()
+  const byId = new Map(takes.map((t) => [t.id, t]))
+  for (const take of takes) {
+    if (take.chordEvents) continue
+    try {
+      const audioBuffer = await decodeAudioBlob(take.audioBlob)
+      const { buffer, isSilent } = await preprocessForAnalysis(audioBuffer)
+      const chordEvents = isSilent ? [] : recognizeChordsFromBuffer(buffer)
+      await db.takes.update(take.id, { chordEvents })
+      byId.set(take.id, { ...take, chordEvents })
+    } catch (e) {
+      // 1テイクの失敗で全体を止めない。そのテイクはコード比較が出ないだけ
+      console.warn('和音認識に失敗しました', take.id, e)
+    }
+  }
+  const results = await db.diagnosisResults.where('takeId').anyOf([...byId.keys()]).toArray()
+  for (const r of results) {
+    if (r.chordMatchRate !== undefined) continue
+    const ref = byId.get(r.comparedToTakeId)
+    const cur = byId.get(r.takeId)
+    if (!ref || !cur) continue
+    const patch = storedChordMetrics(ref, cur)
+    if (Object.keys(patch).length) await db.diagnosisResults.update(r.id, patch)
+  }
 }
 
 /**
@@ -191,14 +245,16 @@ export async function recomputeDiagnosis(
     targetTake = await pickMostStableTake(threadId, takeId)
   }
   if (!targetTake?.noteEvents) return null
-  return { metrics: diagnose(targetTake.noteEvents, take.noteEvents), comparedToTakeId: targetTake.id }
+  const chord: ChordDiagnosis | null =
+    targetTake.chordEvents && take.chordEvents ? diagnoseChords(targetTake.chordEvents, take.chordEvents) : null
+  return { metrics: diagnose(targetTake.noteEvents, take.noteEvents), chord, comparedToTakeId: targetTake.id }
 }
 
 export async function setReferenceTakeFromFile(threadId: string, file: File): Promise<void> {
   const isVideo = file.type.startsWith('video/')
   const audioBlob = isVideo ? await extractAudioFromVideoFile(file) : file
   const audioBuffer = await decodeAudioBlob(audioBlob)
-  const { noteEvents, analysisOffsetMs, suppressedHarmonicCount } = await transcribe(audioBuffer)
+  const { noteEvents, analysisOffsetMs, suppressedHarmonicCount, chordEvents } = await transcribe(audioBuffer)
 
   // スレッドにつきお手本は1件のみ。既存のものがあれば置き換える。
   // 既存が「過去テイクを昇格させたもの(案C)」の場合は削除せず通常テイクに戻す
@@ -217,6 +273,7 @@ export async function setReferenceTakeFromFile(threadId: string, file: File): Pr
     noteEvents,
     analysisOffsetMs,
     suppressedHarmonicCount,
+    chordEvents,
   })
   await db.threads.update(threadId, { referenceTakeId: takeId })
 }

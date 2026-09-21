@@ -82,6 +82,20 @@ export const BB_THIRD_FLAT_SHIFTS = [
   { noteIndex: 21, semitones: -1 },
 ]
 
+// --- シナリオ6: G→C→D→G のストローク(和音認識のデモ) --------------------------
+// 和音認識(chordRecognition.ts)を入れたことで、ストロークも「コード進行」としてなら診断できるようになった。
+// 6弦を14ms間隔で弾き下ろす。音符起こしはここでは崩れるが、それ自体が
+// 「音符単位は無理でもコード単位なら取れる」という見せ方になる。
+const G_OPEN = [43, 47, 50, 55, 59, 67]
+const C_OPEN = [48, 52, 55, 60, 64]
+const D_OPEN = [50, 57, 62, 66]
+/** ストロークの弦間隔(拍)。bpm 80 で約14ms */
+const STRUM_STEP_BEATS = 0.019
+
+function strum(pitches: readonly number[], startBeat: number, beats: number): PhraseNote[] {
+  return pitches.map((pitch, i) => ({ pitch, beat: startBeat + i * STRUM_STEP_BEATS, beats: beats - i * STRUM_STEP_BEATS }))
+}
+
 // --- シナリオ3: クロマチック上行 ---------------------------------------------
 // 6弦→1弦へ各弦1〜4フレットを順に。基礎練らしく単音でクリーンな素材にしている。
 const CHROMATIC_UP = [
@@ -119,6 +133,19 @@ export const DEMO_PHRASES: readonly DemoPhrase[] = [
       ...run(BB_ARPEGGIO, 10, 0.5),
     ],
     description: 'バレーコード同士の押さえ替えを、アルペジオで2拍ごとに3往復。',
+  },
+  {
+    id: 'strum',
+    title: 'G→C→D→G のストローク',
+    bpm: 80,
+    subdivision: 1,
+    notes: [
+      ...strum(G_OPEN, 0, 2),
+      ...strum(C_OPEN, 2, 2),
+      ...strum(D_OPEN, 4, 2),
+      ...strum(G_OPEN, 6, 2),
+    ],
+    description: '開放弦コードを2拍ずつ弾き下ろす。和音認識でコード進行と切り替えのタイミングを見る。',
   },
   {
     id: 'chromatic',

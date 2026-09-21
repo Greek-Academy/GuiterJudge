@@ -1,6 +1,7 @@
 import db, { type DiagnosisResult, type SongThroughCompletion, type Take, type Thread } from '../db'
 import { transcribe, warmUpModel } from '../basicPitch'
 import { diagnose } from '../comparison'
+import { diagnoseChords } from '../chordRecognition'
 import { gridTimingForTake } from '../actions'
 import { createRng } from './rng'
 import { BB_THIRD_FLAT_SHIFTS, DEMO_PHRASES, performPhrase, type DemoPhrase, type SloppinessProfile } from './phrases'
@@ -42,6 +43,8 @@ type DemoThreadSpec = {
   takes: DemoTakeSpec[]
   /** 'resolved'のスレッドで、最後の診断に残す自己確認ステップの回答 */
   resolvedSelfCheck?: 'yes' | 'no' | 'unsure'
+  /** 和音の練習スレッド(コード進行の比較を画面に出す) */
+  chordMode?: boolean
 }
 
 /** 徐々に上達していく様子を作るためのプロファイル生成 */
@@ -92,6 +95,20 @@ const PHRASE_THREAD_SPECS: readonly DemoThreadSpec[] = [
       { daysAgo: 2, role: 'normal', profile: CHORD_CHANGE_PROFILE(18) },
       // お手本は正しい押さえ方(systematicPitchShiftsなし)で、ほとんど揺れない演奏
       { daysAgo: 1, role: 'reference', profile: sloppiness(8, 0, 0, 0, 0.08) },
+    ],
+  },
+  {
+    // シナリオ6: ストローク。音符起こしは崩れるがコード進行としては読める、を見せる。
+    // 崩れ方は「切り替えが遅れる」を timingJitter で、押さえ損ないを dropNote で表す
+    id: `${DEMO_ID_PREFIX}strum`,
+    phraseId: 'strum',
+    status: 'active',
+    rngSeed: 6611,
+    chordMode: true,
+    takes: [
+      { daysAgo: 7, role: 'normal', profile: sloppiness(70, 0.08, 0.03, 0.02, 0.3) },
+      { daysAgo: 4, role: 'normal', profile: sloppiness(45, 0.04, 0.02, 0.01, 0.22) },
+      { daysAgo: 1, role: 'normal', profile: sloppiness(25, 0.02, 0.01, 0.01, 0.15) },
     ],
   },
   {
@@ -149,12 +166,17 @@ function phraseById(id: string): DemoPhrase {
  */
 function makeDiagnosis(take: Take, prevNormal: Take): DiagnosisResult {
   const metrics = diagnose(prevNormal.noteEvents ?? [], take.noteEvents ?? [])
+  const chord = diagnoseChords(prevNormal.chordEvents ?? [], take.chordEvents ?? [])
   return {
     id: `${take.id}-diag`,
     takeId: take.id,
     comparedToTakeId: prevNormal.id,
     compareMode: 'prev',
     ...metrics,
+    chordMatchRate: chord.chordMatchRate,
+    missedOrExtraChordCount: chord.missedOrExtraChordCount,
+    alignedChordCount: chord.alignedChordCount,
+    chordChangeJitterMs: chord.chordChangeJitterMs,
   }
 }
 
@@ -221,7 +243,7 @@ async function runSeed(): Promise<{ threadCount: number; takeCount: number }> {
       const notes = performPhrase(phrase, takeSpec.profile, createRng(spec.rngSeed + i * 977))
       const { blob, audioBuffer, durationMs } = await synthesizeTake(notes)
       // 閾値は既定のまま。本番と同じコードパスを通すことがデモの前提なので、ここで調整はしない
-      const { noteEvents, analysisOffsetMs, suppressedHarmonicCount } = await transcribe(audioBuffer)
+      const { noteEvents, analysisOffsetMs, suppressedHarmonicCount, chordEvents } = await transcribe(audioBuffer)
 
       const recordedAt = timestampDaysAgo(takeSpec.daysAgo, i * 6)
       const take: Take = {
@@ -236,6 +258,7 @@ async function runSeed(): Promise<{ threadCount: number; takeCount: number }> {
         noteEvents,
         analysisOffsetMs,
         suppressedHarmonicCount,
+        chordEvents,
         // 練習テイクは「メトロノームに合わせて弾いた」設定。合成音声にカウントインは無いので0拍。
         // お手本は講師の録音を取り込んだ設定なので、メトロノーム情報は付けない
         metronome:
@@ -269,6 +292,7 @@ async function runSeed(): Promise<{ threadCount: number; takeCount: number }> {
       lastActivityAt,
       status: spec.status,
       referenceTakeId,
+      chordMode: spec.chordMode,
     }
 
     // スレッド単位でまとめて書く。解析中の中途半端な状態が一覧に見えないようにするため。

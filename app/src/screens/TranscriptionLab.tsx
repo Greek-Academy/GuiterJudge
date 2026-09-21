@@ -15,6 +15,9 @@ import {
 import { playNoteEvents } from '../preview'
 import { parsePitchList, pitchToName, pitchSequenceDiff, type PitchDiff } from '../pitchNames'
 import PianoRoll from '../components/PianoRoll'
+import ChordTimeline from '../components/ChordTimeline'
+import { recognizeChords, formatProgression, DEFAULT_SEVENTH_PENALTY } from '../chordRecognition'
+import { DEFAULT_LOG_COMPRESSION } from '../chroma'
 import type { NoteEvent } from '../db'
 
 // DesignDoc Section 8 / Appendix B「M1本検証への示唆」に対応する検証用画面。
@@ -47,6 +50,10 @@ export default function TranscriptionLab({ onBack }: { onBack: () => void }) {
   const [source, setSource] = useState<Source | null>(null)
   const [pre, setPre] = useState<Omit<PreprocessResult, 'buffer'> | null>(null)
   const [raw, setRaw] = useState<RawModelOutput | null>(null)
+  /** 前処理済みサンプル。和音認識のパラメータを変えたときに FFT からやり直すために持つ */
+  const [analysisSamples, setAnalysisSamples] = useState<{ samples: Float32Array; sampleRate: number } | null>(null)
+  const [chordLogCompression, setChordLogCompression] = useState(DEFAULT_LOG_COMPRESSION)
+  const [chordSeventhPenalty, setChordSeventhPenalty] = useState(DEFAULT_SEVENTH_PENALTY)
   const [timings, setTimings] = useState<{ modelLoadMs?: number; preprocessMs: number; inferenceMs: number } | null>(null)
 
   const [onset, setOnset] = useState(DEFAULT_ONSET_THRESHOLD)
@@ -98,6 +105,17 @@ export default function TranscriptionLab({ onBack }: { onBack: () => void }) {
   const outOfRangeCount = rawNoteCount - notes.length - suppressedHarmonics.length
   const currentDiff = raw && expected.length ? pitchSequenceDiff(expected, notes.map((n) => n.pitch), octaveTolerant) : null
 
+  const chords = useMemo(
+    () =>
+      analysisSamples
+        ? recognizeChords(analysisSamples.samples, analysisSamples.sampleRate, {
+            logCompression: chordLogCompression,
+            seventhPenalty: chordSeventhPenalty,
+          })
+        : null,
+    [analysisSamples, chordLogCompression, chordSeventhPenalty],
+  )
+
   async function analyze(buffer: AudioBuffer, label: string) {
     setBusy(true)
     setSweep(null)
@@ -113,6 +131,9 @@ export default function TranscriptionLab({ onBack }: { onBack: () => void }) {
       const { buffer: analysisBuffer, ...preRest } = await preprocessForAnalysis(buffer)
       const preprocessMs = performance.now() - t0
       setPre(preRest)
+      setAnalysisSamples(
+        preRest.isSilent ? null : { samples: analysisBuffer.getChannelData(0).slice(), sampleRate: analysisBuffer.sampleRate },
+      )
 
       if (preRest.isSilent) {
         setRaw(null)
@@ -256,6 +277,44 @@ export default function TranscriptionLab({ onBack }: { onBack: () => void }) {
             <div className="note-block">
               正規化ゲインはテイクごとの録音レベル差の目安になります(値が大きいほど元の音が小さい)。
               テイク間でこの値が極端に違う場合、マイク位置や入力レベルが揃っていない可能性があります。
+            </div>
+          </>
+        )}
+
+        {chords && (
+          <>
+            <div className="section-title">2b. 和音認識(フーリエ変換 → クロマ → テンプレート照合)</div>
+            <div className="chord-progression">{formatProgression(chords, 24) || '(コードとして読める区間なし)'}</div>
+            <ChordTimeline take={chords} />
+            <div className="row" style={{ margin: '4px 16px', gap: 12, fontSize: 12 }}>
+              <label style={{ flex: 1 }}>
+                対数圧縮 {chordLogCompression}
+                <input
+                  type="range"
+                  min={5}
+                  max={100}
+                  step={5}
+                  value={chordLogCompression}
+                  onChange={(e) => setChordLogCompression(Number(e.target.value))}
+                  style={{ width: '100%' }}
+                />
+              </label>
+              <label style={{ flex: 1 }}>
+                7thペナルティ {chordSeventhPenalty.toFixed(2)}
+                <input
+                  type="range"
+                  min={0}
+                  max={0.1}
+                  step={0.01}
+                  value={chordSeventhPenalty}
+                  onChange={(e) => setChordSeventhPenalty(Number(e.target.value))}
+                  style={{ width: '100%' }}
+                />
+              </label>
+            </div>
+            <div className="note-block">
+              Basic Pitch とは独立した処理です。ストロークの実録音でコードが正しく出るか、単音で何に見えるかをここで確かめます。
+              対数圧縮を上げると弱い音(倍音)も拾い、7th への誤認が増えます。区間の類似度は帯にマウスを乗せると見えます。
             </div>
           </>
         )}

@@ -182,3 +182,17 @@ button:disabled { opacity: 0.5; cursor: default; }
 .count-in .num { font-size: 56px; font-weight: 700; line-height: 1; color: var(--text-secondary); }
 .count-in .num.accent { color: var(--series-1); }
 .count-in .sub { font-size: 11px; color: var(--text-muted); margin-top: 6px; }
+
+/* コード進行の帯(ChordTimeline)。上段=比較対象(薄い)、下段=今回 */
+.chord-timeline { margin: 10px 16px; display: flex; flex-direction: column; gap: 6px; }
+.chord-row { display: flex; align-items: center; gap: 8px; }
+.chord-row-label { font-size: 10px; color: var(--text-muted); width: 44px; flex: none; }
+.chord-track { position: relative; flex: 1; height: 30px; border-radius: 8px; background: var(--gridline); overflow: hidden; }
+.chord-seg { position: absolute; top: 2px; bottom: 2px; border-radius: 4px; background: var(--series-1); color: white; font-size: 11px; font-weight: 600; display: flex; align-items: center; justify-content: center; overflow: hidden; white-space: nowrap; }
+.chord-seg span { padding: 0 3px; }
+.chord-seg.mismatch { background: var(--status-critical); }
+.chord-seg.extra { background: var(--chart-extra); }
+.chord-track.ghost .chord-seg { background: var(--baseline); color: var(--text-primary); }
+.chord-track.ghost .chord-seg.missed { background: var(--surface-1); color: var(--text-secondary); border: 1px dashed var(--baseline); }
+.chord-track.ghost .chord-seg.mismatch { background: var(--baseline); }
+.chord-progression { font-size: 12px; color: var(--text-secondary); margin: 0 16px 6px; word-break: break-all; }

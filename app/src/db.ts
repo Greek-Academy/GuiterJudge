@@ -1,6 +1,7 @@
 import Dexie, { type EntityTable } from 'dexie'
 import type { GridTiming, Subdivision } from './gridTiming'
 import { diagnose } from './comparison'
+import type { ChordEvent } from './chordRecognition'
 
 // DesignDoc Section 4「データモデル」に対応する実装。
 // deltaMetricsはネストさせず、Dexieで扱いやすいようフラットな型にしている。
@@ -25,6 +26,13 @@ export type Thread = {
   referenceTakeId?: string // role:'reference'のTakeのid(任意)
   /** このスレッドで最後に使ったメトロノーム設定。次の録音の既定値 */
   metronome?: MetronomeSpec
+  /**
+   * 和音(ストローク)の練習スレッド。ONにすると音符単位の診断に加えて、
+   * コード進行の認識結果(Take.chordEvents)と比較を画面に出す。
+   * 認識自体は全テイクで走らせているが、単音フレーズでも何かのコードに見えてしまうので、
+   * ユーザーが「これは和音の練習」と宣言したスレッドだけで見せる
+   */
+  chordMode?: boolean
 }
 
 export type NoteEvent = { pitch: number; startMs: number; durationMs: number; velocity?: number }
@@ -49,6 +57,11 @@ export type Take = {
   gridTiming?: GridTiming | null
   /** 音符起こし時に「オンセットの無い倍音」として除外した音符の数(harmonicFilter.ts)。隠さない */
   suppressedHarmonicCount?: number
+  /**
+   * 和音認識(chordRecognition.ts)の結果。noteEvents と同じ時間軸(無音トリム後)。
+   * 和音認識を実装する前のテイクには無い。スレッドの chordMode をONにした時に音声から埋める
+   */
+  chordEvents?: ChordEvent[]
 }
 
 export type DeviationSegment = { startMs: number; endMs: number; severity: number }
@@ -71,6 +84,11 @@ export type DiagnosisResult = {
   onsetOffsetMs: number
   deviationTimeline: DeviationSegment[]
   resolvedSelfCheck?: 'yes' | 'no' | 'unsure' // Section6「解決済みにする」時の自己確認ステップの回答
+  /** コード進行の比較(chordRecognition.ts の diagnoseChords)。両テイクに chordEvents がある場合だけ入る */
+  chordMatchRate?: number
+  missedOrExtraChordCount?: number
+  alignedChordCount?: number
+  chordChangeJitterMs?: number
 }
 
 export type SongThroughCompletion = {
