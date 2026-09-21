@@ -269,8 +269,27 @@ GAPS 論文(Riley, Guo, Edwards, Dixon, ISMIR 2024)はベンチマークモデ�
 | (b) 蒸留で小型化 | 公開モデルを教師にして 1〜3M パラメータの生徒を GAPS + GuitarSet で学習 | ブラウザ向きのサイズと速度 | 学習の仕事が丸ごと発生(数日)。どこまで精度が残るかは未知 |
 | (c) 推論をサーバに出す | Mac / 自宅サーバ / クラウドの Python で推論、ブラウザは音声を送る | 最短で 94% を使える。今日の venv で動く | オフライン不可、サーバ運用、録音の送信 |
 
-推奨は **(a) の実現性を 1 日で測ってから決める**: ONNX に出せるか、ヘッドレス Chrome の ORT Web(WASM)で 10 秒の録音が何秒か。数秒に収まるなら (a)、収まらないなら (c) を先に入れて (b) を並走させる。
 いずれにせよ、Basic Pitch のファインチューニングはここで打ち切る。
+
+### 11.3 (a) の実測(2026-09-21 15:30)
+
+ONNX への変換とブラウザ内 ONNX Runtime(WASM)での推論時間を測った。成果物は `~/dev/guitar-data/onnx/`(`guitar-gaps.onnx` 98.7 MB、fp16 49.4 MB、int8 62.4 MB、プローブページ `web/`)。
+
+| 実行環境 | 10 秒セグメント 1 本の推論 |
+|---|---|
+| PyTorch、Mac CPU | 0.74 s |
+| ONNX Runtime、Mac CPU 1 スレッド / 4 スレッド | 0.73 s / 0.33 s |
+| **ONNX Runtime Web(WASM、ヘッドレス Chrome)fp32、1 スレッド / 4 スレッド** | **4.7 s / 4.7 s**(スレッドを増やしても変わらず) |
+| 同 int8(動的量子化) | 13 s(WASM では逆に遅い) |
+| 同 fp16 | セッション作成で失敗(Mul の型不一致。WASM では速度の利点も無い) |
+| WebGPU | ヘッドレス(SwiftShader)では測れない。実機 Chrome で `http://127.0.0.1:8766/` を開いて計測できる(GRU が WebGPU 未対応なら CPU にフォールバック) |
+
+- ONNX 変換は 1 秒で通り、PyTorch との出力差は 1e-6 以下。変換そのものに問題は無い
+- 出力形は (1, 1001, 88): 100 フレーム/秒 × 88 音高の onset / offset / frame / velocity。Basic Pitch(86 フレーム/秒、後処理は outputToNotesPoly)とは後処理を別に書く必要がある(Kong らの `RegressionPostProcessor` 相当を JS に移植)
+- **10 秒の録音に対して Mac のブラウザで約 5 秒。スマホなら 2〜3 倍を見込む(10〜15 秒)。** Basic Pitch はウォームアップ後 0.3 秒程度なので、体感は明確に遅くなる。演算量はおよそ 10〜15 GFLOP/10 秒で、WASM SIMD 単スレッドの限界に近い
+- モデル配信は fp32 の 99 MB を Service Worker でキャッシュすることになる。iOS Safari の Cache Storage は容量と自動削除の制約が厳しく、iPhone で PWA として使う場合は再ダウンロードが起きる可能性がある
+
+読み方: (a) は「できるが遅い」。デスクトップで録音後 5 秒待てるなら成立、スマホ主体なら厳しい。
 
 ## 8. 成果物と再現
 
