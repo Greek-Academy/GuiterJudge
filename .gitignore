@@ -26,3 +26,6 @@ pnpm-debug.log*
 *.njsproj
 *.sln
 *.sw?
+
+# 学習時に basic_pitch のデータローダが置く検証セットのキャッシュ(数十〜数百MB)
+train/validation_set_cache_*
