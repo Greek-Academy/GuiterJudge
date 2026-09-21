@@ -14,7 +14,8 @@ const parseGrid = (s, dflt) => (typeof s === 'string' ? s.split(',').map(Number)
 const ONSETS = parseGrid(flags.onsets, [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9])
 const FRAMES = parseGrid(flags.frames, [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8])
 const GUITARSET = flags.dataset === 'guitarset'
-const audioFile = (id) => encodeURIComponent(GUITARSET ? id + '_mic.wav' : id + '.wav') // GuitarSet の C# などの # は URL フラグメントになるのでエンコード
+const audioFile = (id) => (GUITARSET ? id + '_mic.wav' : id + '.wav')
+const audioUrl = (id) => audioRoute + encodeURIComponent(audioFile(id)) // GuitarSet の C# などの # は URL フラグメントになるのでエンコード(ディスク上の存在確認は生のファイル名で)
 const audioRoute = GUITARSET ? '/audio-guitarset/' : '/audio/'
 const ids = GUITARSET ? readGuitarSetTestIds(DATA) : readGapsIds(DATA, typeof flags.split === 'string' ? flags.split : undefined)
 const testIds = ids.filter((id) => fs.existsSync(path.join(DATA, 'audio', audioFile(id))))
@@ -53,8 +54,8 @@ for (const tid of testIds) {
   let json = null
   for (const backend of ['webgl', 'cpu']) {
     const call = SWEEP
-      ? `window.__transcribeSweep('${audioRoute}${audioFile(tid)}', ${Number(CROP)}, '${backend}', ${JSON.stringify(ONSETS)}, ${JSON.stringify(FRAMES)})`
-      : `window.__transcribe('${audioRoute}${audioFile(tid)}', ${Number(CROP)}, '${backend}')`
+      ? `window.__transcribeSweep('${audioUrl(tid)}', ${Number(CROP)}, '${backend}', ${JSON.stringify(ONSETS)}, ${JSON.stringify(FRAMES)})`
+      : `window.__transcribe('${audioUrl(tid)}', ${Number(CROP)}, '${backend}')`
     try { json = await evalJs(call); break }
     catch (e) { console.log(`${tid}  ${backend} failed: ${String(e).slice(0, 120)}`) }
     if (closed) { console.log('CDP connection closed; exiting with code 2 so the caller can retry'); process.exit(2) }
