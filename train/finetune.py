@@ -9,6 +9,14 @@
         --epochs 60 --steps-per-epoch 200 --batch-size 16 --lr 1e-4
 
 学習後は <out>/<timestamp>/model.best(SavedModel)と <out>/<timestamp>/export(TF.js 変換用に出力名を揃えた SavedModel)ができる。
+
+onset 損失(--onset-*)について: run A(公式の損失そのまま)では onset の出力確率が全体に下がり、アプリの閾値 0.7 では
+ほとんど立たなくなった(閾値スイープで確認、最良閾値でも元モデルに届かず)。GAPS の MIDI は演奏に合わせて
+アラインしてあるが数フレームのずれは残るので、正解の隣のフレームを「オンセット無し」として罰すると、
+モデルは自信を持ってピークを出せなくなる。そこで onset だけ
+  - 正解の前後 N フレーム(--onset-neighbor-frames)は損失から外す(正解でも不正解でもない)
+  - 正例の重みを上げる(--onset-pos-weight、0.5 で公式と同じ均等)
+既定値(0 / 0.5 / 0.2)では公式の損失と一致する。
 """
 import argparse
 import logging
@@ -25,6 +33,39 @@ from basic_pitch.data import tf_example_deserialization
 logging.basicConfig(level=logging.INFO)
 
 PRETRAINED = os.path.join(os.path.dirname(basic_pitch.__file__), "saved_models", "icassp_2022", "nmp")
+
+
+def tolerant_onset_loss(label_smoothing: float, positive_weight: float, neighbor_frames: int):
+    """onset 用の BCE。正解の前後 neighbor_frames フレームを損失から外し、正例/負例の重みを変えられる。
+
+    y_true / y_pred の形は (batch, time, freq)。公式の transcription_loss と同じく freq 軸で平均した
+    (batch, time) を返す。neighbor_frames=0, positive_weight=0.5 なら公式と同じ値になる。
+    """
+
+    def fn(y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
+        y_true = tf.cast(y_true, y_pred.dtype)
+        pos = tf.cast(y_true > 0, y_pred.dtype)
+        smoothed = y_true * (1.0 - label_smoothing) + 0.5 * label_smoothing
+        bce = tf.keras.backend.binary_crossentropy(smoothed, y_pred)  # 要素ごと
+        weight = pos * (2.0 * positive_weight) + (1.0 - pos) * (2.0 * (1.0 - positive_weight))
+        if neighbor_frames > 0:
+            # 時間方向に ±neighbor_frames 広げた正解。広げた部分のうち元が負例のところは無視する
+            k = 2 * neighbor_frames + 1
+            dilated = tf.nn.max_pool2d(pos[..., tf.newaxis], ksize=[k, 1], strides=1, padding="SAME")[..., 0]
+            weight = weight * (1.0 - dilated * (1.0 - pos))
+        return tf.reduce_mean(weight * bce, axis=-1)
+
+    return fn
+
+
+def build_loss(args) -> dict:
+    """contour / note は公式のまま。onset だけ tolerant_onset_loss に差し替える(既定値では公式と一致)"""
+    official = models.loss()
+    return {
+        "contour": official["contour"],
+        "note": official["note"],
+        "onset": tolerant_onset_loss(args.onset_smoothing, args.onset_pos_weight, args.onset_neighbor_frames),
+    }
 
 
 def load_pretrained() -> tf.keras.Model:
@@ -68,6 +109,9 @@ def main() -> None:
     ap.add_argument("--patience", type=int, default=10)
     ap.add_argument("--datasets", default="gaps", help="使う TFRecord データセット名(カンマ区切り)。例: gaps,guitarset")
     ap.add_argument("--weights", default="", help="データセットのサンプリング比(カンマ区切り、省略時は均等)。例: 0.7,0.3")
+    ap.add_argument("--onset-pos-weight", type=float, default=0.5, help="onset 損失の正例の重み。0.5 で公式と同じ均等、0.75 で正例 1.5 倍・負例 0.5 倍")
+    ap.add_argument("--onset-neighbor-frames", type=int, default=0, help="onset 正解の前後この数のフレームを損失から外す(1 フレーム ≈ 11.6ms)。0 で公式と同じ")
+    ap.add_argument("--onset-smoothing", type=float, default=0.2, help="onset 損失のラベルスムージング。公式は 0.2")
     ap.add_argument("--export-only", default="", help="学習せず、この SavedModel を TF.js 用に再保存するだけ")
     args = ap.parse_args()
 
@@ -99,7 +143,7 @@ def main() -> None:
         tf.keras.callbacks.CSVLogger(os.path.join(run_dir, "history.csv")),
     ]
     model.compile(
-        loss=models.loss(),
+        loss=build_loss(args),
         optimizer=tf.keras.optimizers.Adam(args.lr),
         sample_weight_mode={"contour": None, "note": None, "onset": None},
     )

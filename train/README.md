@@ -45,6 +45,8 @@ python finetune.py --data ~/dev/guitar-data/tfrecords --out ~/dev/guitar-data/ru
 ```
 
 - 公開重み(`basic_pitch/saved_models/icassp_2022/nmp`)を Keras モデルとして読み、公式と同じ損失(BCE、ラベルスムージング 0.2)
+- onset 損失だけ差し替えられる(`--onset-neighbor-frames N`: 正解の前後 N フレームを損失から外す、`--onset-pos-weight`: 正例の重み、`--onset-smoothing`)。
+  既定値では公式と一致する。run A で onset の確率が全体に下がった対策(下記「判断の記録」)
 - 学習率は公式既定 1e-3 の 1/10。ReduceLROnPlateau と EarlyStopping(patience 10、最良の重みに戻す)
 - 学習前の検証損失を `baseline.txt` に残す(= 公開重みそのままの値)。これより下がらなければ差し替えない
 - 出力: `<out>/<timestamp>/model.best`(Keras SavedModel)、`export`(TF.js 変換用に出力名を揃えた SavedModel)、`history.csv`、TensorBoard ログ
@@ -70,6 +72,12 @@ bash export_tfjs.sh ~/dev/guitar-data/runs/gaps-ft/<timestamp>/export ~/dev/guit
 (重みがほぼ動いていないので一致するのが正しい)。出力名の対応も一致。
 
 ## 判断の記録
+
+- run A(GAPS 単独、公式の損失、lr 1e-4、45 エポック): 検証損失は 1.030 → 1.011 と下がったが、GAPS test で既定閾値(onset 0.7 / frame 0.5)の F1 は 80.2 → 61.8%。
+  閾値スイープ(`app/eval/gaps-sweep.mjs`)で onset の確率が全体に下がっていることが分かった(onset 閾値 0.4 以上で結果が変わらない)。
+  最良閾値同士でも 元 81.1%(0.7/0.4)vs ft 79.8%(0.2/0.4)で差し替えなし。
+  原因の見立て: GAPS の MIDI アラインメントには数フレームのずれが残り、正解の隣のフレームを負例として罰されるとピークを立てられなくなる。
+  run B は onset 損失を「隣接フレームを無視、正例を重く」に変えて同条件で学習する。評価は毎回スイープの最良同士で比べる
 
 - 一から学習しない: モデルはすでに GuitarSet などで学習済みで、GAPS の 14.8 時間はそれを上書きするには少なく、寄せるには十分
 - GAPS は CC BY-NC-SA 4.0(Zenodo 版)。商用化の予定が無いことを確認した上で学習に使っている。データはリポジトリに入れない

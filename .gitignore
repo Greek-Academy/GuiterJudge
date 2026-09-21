@@ -5,7 +5,7 @@ dist-ssr/
 *.local
 
 # python venvs (if any tooling lands here later)
-.venv/
+.venv*/
 __pycache__/
 
 # logs
