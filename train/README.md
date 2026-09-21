@@ -73,6 +73,8 @@ bash export_tfjs.sh ~/dev/guitar-data/runs/gaps-ft/<timestamp>/export ~/dev/guit
 
 ## 判断の記録
 
+成果の整理と差し替え判断の材料は `FINETUNE_NOTES.md`(リポジトリのルート)。
+
 - run A(GAPS 単独、公式の損失、lr 1e-4、45 エポック): 検証損失は 1.030 → 1.011 と下がったが、GAPS test で既定閾値(onset 0.7 / frame 0.5)の F1 は 80.2 → 61.8%。
   閾値スイープ(`app/eval/gaps-sweep.mjs`)で onset の確率が全体に下がっていることが分かった(onset 閾値 0.4 以上で結果が変わらない)。
   最良閾値同士でも 元 81.1%(0.7/0.4)vs ft 79.8%(0.2/0.4)で差し替えなし。
