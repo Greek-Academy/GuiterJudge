@@ -136,10 +136,33 @@ run B が元の最良を上回るのは**低音弦と短い音価**。中高音�
 
 見送る判断をした場合も、閾値スイープの仕組みと「損失では判断できない」という知見は残るので、この作業は無駄にならない。
 
+## 9. 追記: B の結果と C-1 / C-2(2026-09-21 11:40)
+
+**B(GuitarSet test でのジャンル横断確認)は run B に不利な結果**だった。run B は差し替えない。
+
+GuitarSet test 60 クリップ(奏者 05、ストローク comp 30 + 単音 solo 30、マイク録音、各 20〜45 秒。`#` 入りファイル名の 8 本は後追いで補完中、以下は 52 本の値)。
+採点は GAPS と同じ(±50ms・音高一致、正解 7,587 音)。
+
+| モデルと閾値 | P | R | F1 | comp F1 | solo F1 |
+|---|---|---|---|---|---|
+| 元モデル・アプリ既定 0.7 / 0.5 | 86.7 | 77.3 | 81.7 | 77.8 | 92.6 |
+| 元モデル・最良 0.7 / 0.4 | 83.5 | 81.0 | 82.2 | 78.8 | 92.0 |
+| run B・最良 0.3 / 0.5 | 80.6 | 71.4 | 75.7 | 71.4 | 86.7 |
+| run B・アプリ既定 0.7 / 0.5 | 79.9 | 51.0 | 62.2 | 49.5 | 90.4 |
+
+- 最良同士で **−6.5 pt**。GAPS での +0.7 pt は打ち消される
+- 落ちているのはストローク(comp)の再現率(76 → 64%)。単音(solo)も 92 → 87% と下がる。クラシック(ナイロン弦、単音〜アルペジオ中心)だけで学習したモデルは、スチール弦のストロークで取りこぼしが増える
+- 元モデルは GuitarSet でも GAPS と同じ閾値(0.7 / 0.4〜0.5)が最良で、較正がジャンルをまたいで安定している。run B は 0.3 で、しかも comp と solo で最良の閾値が違う(0.25/0.4 と 0.5/0.7)。**閾値の安定性でも元モデルが勝る**
+- 採用基準「GAPS と GuitarSet の両方で元を下回らない」を満たさないため、run B は不採用
+
+次:
+- **C-1**(onset 損失を強めた GAPS 単独学習)は学習中。データが GAPS だけなので GuitarSet で同じ傾向になると予想する。結果は出たら追記
+- **C-2**(GuitarSet を 3 割混合、onset 損失は run B と同じ)を C-1 の学習終了後に自動で回す。学習に使うのは GuitarSet の奏者 00〜03(検証 04)で、test の奏者 05 には触れない。GAPS と GuitarSet の両方で元を下回らなければ差し替え候補、下回れば「ファインチューニングは現状の規模では効果なし」と結論して元モデルを維持する
+
 ## 8. 成果物と再現
 
 - 学習結果: `~/dev/guitar-data/runs/gaps-ft/20260920-1613/`(run A)、`~/dev/guitar-data/runs/gaps-ft-b/20260921-0002/`(run B)。いずれも `model.best` / `export` / `tfjs` / `history.csv` / `args.txt`
-- スイープ結果: `~/dev/guitar-data/eval/results/sweep-{orig,ft,ftb}-60s-test/`(ft = run A、ftb = run B)
+- スイープ結果: `~/dev/guitar-data/eval/results/sweep-{orig,ft,ftb,ftc1,ftc2}-60s-test/`(GAPS。ft = run A、ftb = run B)、`sweep-{orig,ftb,ftc1,ftc2}-gs-test/`(GuitarSet)
 - 比較の再表示: `cd app && node eval/gaps-sweep.mjs ~/dev/guitar-data/gaps ~/dev/guitar-data/eval/results/sweep-orig-60s-test ~/dev/guitar-data/eval/results/sweep-ft-60s-test ~/dev/guitar-data/eval/results/sweep-ftb-60s-test`
 - 新しいモデルのスイープ: `~/dev/guitar-data/eval/run-sweep.sh` のモデル名を変えて実行(配信ディレクトリ `eval/serve/model-*` にシンボリックリンクを置く)
 - 学習: `train/README.md`。run B の引数は `--onset-pos-weight 0.75 --onset-neighbor-frames 2`、他は README の例のまま
