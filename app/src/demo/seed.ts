@@ -5,7 +5,7 @@ import { diagnoseChords } from '../chordRecognition'
 import { gridTimingForTake } from '../actions'
 import { createRng } from './rng'
 import { BB_THIRD_FLAT_SHIFTS, DEMO_PHRASES, performPhrase, type DemoPhrase, type SloppinessProfile } from './phrases'
-import { synthesizeTake } from './synth'
+import { synthesizeTakeForAnalysis } from '../synth'
 
 // 初回起動時のDBは空で、その場で1回録音しても比較対象が無いため診断が出ない。
 // このアプリの価値は「数週間の練習の中で伸びているか」なので、時間をまたいだ履歴が無いと何も見せられない。
@@ -241,7 +241,7 @@ async function runSeed(): Promise<{ threadCount: number; takeCount: number }> {
       )
 
       const notes = performPhrase(phrase, takeSpec.profile, createRng(spec.rngSeed + i * 977))
-      const { blob, audioBuffer, durationMs } = await synthesizeTake(notes)
+      const { blob, audioBuffer, durationMs } = await synthesizeTakeForAnalysis(notes)
       // 閾値は既定のまま。本番と同じコードパスを通すことがデモの前提なので、ここで調整はしない
       const { noteEvents, analysisOffsetMs, suppressedHarmonicCount, chordEvents } = await transcribe(audioBuffer)
 

@@ -33,6 +33,13 @@ const MODE_NOTE: Record<'prev' | 'best' | 'reference', string> = {
     'お手本との比較です。自己比較と違い「正しさ」に近い指標になります。自己比較でばらつきが小さいのにここで一致率が落ちる場合、毎回同じ間違いを安定して弾いている可能性があります。',
 }
 
+/**
+ * お手本が楽譜ファイル由来(sourceType 'importedScore')のときの説明。お手本は人の演奏ではなく
+ * 指定テンポの格子どおりの音符列なので、同じ数値でも意味が変わる(数値の定義は変えない)
+ */
+const SCORE_REFERENCE_NOTE =
+  '楽譜から作ったお手本との比較です。お手本は楽譜どおりの音符を指定テンポの格子に並べたものなので、「出だしのばらつき」は格子からのずれ、「テンポ差」は指定 BPM との差を表します。人の演奏には揺れがあるので、ばらつきが 0 にならないのは普通です。一致率は楽譜の音をどれだけ弾けたか(採譜で拾えたか)の目安で、演奏の良し悪しを決めるものではありません。'
+
 function signed(v: number, digits = 1) {
   const s = v.toFixed(digits)
   return v > 0 ? `+${s}` : s
@@ -51,6 +58,8 @@ export default function DiagnosisView({ threadId, takeId, onBack, onRecordAgain,
     () => (result ? db.takes.get(result.comparedToTakeId) : undefined),
     [result?.comparedToTakeId],
   )
+  /** 楽譜から作ったお手本と比べているか。説明文を切り替える */
+  const scoreReference = mode === 'reference' && referenceTake?.sourceType === 'importedScore'
 
   useEffect(() => {
     let cancelled = false
@@ -177,7 +186,7 @@ export default function DiagnosisView({ threadId, takeId, onBack, onRecordAgain,
             </div>
           )}
         </div>
-        <div className="note-block">{MODE_NOTE[mode]}</div>
+        <div className="note-block">{scoreReference ? SCORE_REFERENCE_NOTE : MODE_NOTE[mode]}</div>
 
         <div className="row" style={{ margin: '0 16px', gap: 8 }}>
           {take.noteEvents && (
@@ -280,8 +289,17 @@ export default function DiagnosisView({ threadId, takeId, onBack, onRecordAgain,
               </div>
             </div>
             <div className="note-block">
-              ばらつきは、全体のオフセット({signed(result.onsetOffsetMs, 0)}ms)とテンポ差を取り除いた後の残差です。
-              出だしの間の取り方や速さの違いは不安定さとして数えていません。
+              {scoreReference ? (
+                <>
+                  ばらつきは、楽譜の格子に対して全体のオフセット({signed(result.onsetOffsetMs, 0)}ms)とテンポ差を取り除いた後の残差です。
+                  テンポ差は指定した BPM(♩={comparedTake?.scoreImport?.tempoBpm ?? '—'})に対する速さの違いです(正 = 速い)。
+                </>
+              ) : (
+                <>
+                  ばらつきは、全体のオフセット({signed(result.onsetOffsetMs, 0)}ms)とテンポ差を取り除いた後の残差です。
+                  出だしの間の取り方や速さの違いは不安定さとして数えていません。
+                </>
+              )}
               「統合した分割音」は、鳴り続けている音に立った偽のオンセットを1音に畳んだ数で、両テイクの合計です。
             </div>
 
@@ -298,7 +316,7 @@ export default function DiagnosisView({ threadId, takeId, onBack, onRecordAgain,
               <div className="note-block">音符起こしの結果が無いため、ズレの内訳を表示できません。</div>
             )}
             <div className="note-block">
-              薄い灰色は比較対象(基準)のテイクです。色付きが今回のテイクで、基準と照らし合わせた結果を表しています。
+              {scoreReference ? '薄い灰色は楽譜から作ったお手本の音符です。' : '薄い灰色は比較対象(基準)のテイクです。'}色付きが今回のテイクで、基準と照らし合わせた結果を表しています。
               どちらも分割統合後の音符です。
             </div>
           </>

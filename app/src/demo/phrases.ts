@@ -1,5 +1,5 @@
 import type { Rng } from './rng'
-import type { SynthNote } from './synth'
+import type { SynthNote } from '../synth'
 import type { Subdivision } from '../gridTiming'
 
 // デモで使うフレーズの定義と、「そのフレーズを人間が弾いたらどうブレるか」のモデル。

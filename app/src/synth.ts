@@ -1,7 +1,8 @@
-import { ANALYSIS_SAMPLE_RATE } from '../preprocess'
-import { createRng } from './rng'
+import { ANALYSIS_SAMPLE_RATE } from './preprocess'
+import { createRng } from './demo/rng'
 
-// デモデータ用の音声合成。診断結果を偽装しないためには「実際に鳴っている音」を
+// 撥弦音の音声合成(元は demo/synth.ts。楽譜から作るお手本テイクの音源にも使うのでここに移した)。
+// デモデータ用: 診断結果を偽装しないためには「実際に鳴っている音」を
 // transcribe()に通す必要があり、そのための音源をコードだけで用意する。
 // Karplus-Strongを選んだのは、ノイズ+ディレイライン+1次ローパスという最小の実装で
 // 撥弦音らしい倍音構造と自然な減衰が同時に得られ、サンプル音源の同梱が不要になるため。
@@ -159,11 +160,21 @@ function createBuffer(length: number, sampleRate: number): AudioBuffer {
 }
 
 /**
- * 合成して、保存用のWAV Blobと解析用のAudioBufferの両方を返す。
+ * 音符列を合成して、保存用の WAV Blob だけを返す(楽譜から作るお手本テイク用)。
+ * お手本の noteEvents は楽譜の音符列そのもので、この音声は Basic Pitch に通さない。
+ * 再生・バックアップ・和音認識の再解析(decodeAudioBlob)で読まれるために持たせる
+ */
+export function synthesizeTake(notes: SynthNote[], opts?: { sampleRate?: number; tailMs?: number }): Blob {
+  const { samples, sampleRate } = renderPluckedString(notes, opts)
+  return encodeWav(samples, sampleRate)
+}
+
+/**
+ * 合成して、保存用のWAV Blobと解析用のAudioBufferの両方を返す(デモ投入用)。
  * 同じ波形からBlobとAudioBufferを作るので、DBに残る音声と診断に使われた音声が必ず一致する
  * (Blobをデコードし直さないぶん、シード実行も速い)。
  */
-export async function synthesizeTake(
+export async function synthesizeTakeForAnalysis(
   notes: SynthNote[],
   opts?: { sampleRate?: number; tailMs?: number },
 ): Promise<{ blob: Blob; audioBuffer: AudioBuffer; durationMs: number }> {

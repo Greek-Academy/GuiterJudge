@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import db, { type MetronomeSpec } from '../db'
+import db, { type MetronomeSpec, type Take } from '../db'
 import {
   startRecording,
   stopRecordingAndDiagnose,
@@ -11,7 +11,10 @@ import {
   setThreadMetronome,
   setThreadChordMode,
   setThreadTuningLowest,
+  type ScoreReferenceResult,
 } from '../actions'
+import { parseScoreFile, SCORE_FILE_ACCEPT, type ParsedScore, type ScoreConversion } from '../score'
+import ScoreImportPanel from '../components/ScoreImportPanel'
 import { playNoteEvents } from '../preview'
 import { formatProgression } from '../chordRecognition'
 import type { BeatInfo } from '../metronome'
@@ -53,6 +56,31 @@ const TUNING_LOWEST_OPTIONS: { midi: number; label: string }[] = [
   { midi: 35, label: 'B1(7 弦 / バリトン)' },
 ]
 
+/** お手本の由来の表示名 */
+function referenceLabel(take: Take): string {
+  if (take.sourceType === 'importedScore' && take.scoreImport) {
+    const si = take.scoreImport
+    const range = si.measureFrom !== undefined ? `第 ${si.measureFrom}〜${si.measureTo} 小節` : '全体'
+    return `楽譜: ${si.title || si.fileName}、${range}、♩=${si.tempoBpm}`
+  }
+  switch (take.sourceType) {
+    case 'demo':
+      return 'デモ音源'
+    case 'importedAudio':
+      return '音声ファイル'
+    case 'importedVideo':
+      return '動画ファイル'
+    case 'importedScore':
+      return '楽譜'
+    default:
+      return '過去テイク'
+  }
+}
+
+function tuningLabel(midi: number): string {
+  return TUNING_LOWEST_OPTIONS.find((o) => o.midi === midi)?.label ?? String(midi)
+}
+
 export default function ThreadDetail({ threadId, onBack, onOpenDiagnosis, autoRecord = false }: Props) {
   const [isRecording, setIsRecording] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -64,6 +92,8 @@ export default function ThreadDetail({ threadId, onBack, onOpenDiagnosis, autoRe
   const [showSelfCheck, setShowSelfCheck] = useState(false)
   // alert()はプロジェクタに映すデモでOS標準ダイアログが割り込むため、画面内の通知に置き換えている
   const [notice, setNotice] = useState<Notice | null>(null)
+  /** 楽譜ファイルを選んだ後の取り込みパネル。null なら閉じている */
+  const [scoreParsed, setScoreParsed] = useState<ParsedScore | null>(null)
 
   const thread = useLiveQuery(() => db.threads.get(threadId), [threadId])
   // スレッドに保存してある前回のメトロノーム設定を、初回だけ初期値として取り込む
@@ -192,6 +222,28 @@ export default function ThreadDetail({ threadId, onBack, onOpenDiagnosis, autoRe
     }
   }
 
+  async function handleScoreFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setNotice(null)
+    try {
+      setScoreParsed(await parseScoreFile(file, file.name))
+    } catch (err) {
+      setScoreParsed(null)
+      setNotice({ kind: 'error', text: '楽譜ファイルを読み込めませんでした: ' + (err as Error).message })
+    }
+  }
+
+  function handleScoreDone(result: ScoreReferenceResult, conv: ScoreConversion) {
+    setScoreParsed(null)
+    let text = `楽譜からお手本を作りました(${conv.notes.length} 音、♩=${Math.round(conv.tempoBpm * 10) / 10})`
+    if (result.tuningLoweredTo !== undefined) {
+      text += `。楽譜に標準調弦より低い音があるので、このスレッドの最低音を ${tuningLabel(result.tuningLoweredTo)} に下げました`
+    }
+    setNotice({ kind: 'success', text })
+  }
+
   async function handlePromoteToReference(takeId: string) {
     setNotice(null)
     try {
@@ -216,6 +268,30 @@ export default function ThreadDetail({ threadId, onBack, onOpenDiagnosis, autoRe
   }
 
   if (!thread) return null
+
+  const scoreFileButton = (
+    <label className="secondary" style={{ display: 'block', textAlign: 'center' }}>
+      楽譜ファイルから(.musicxml / .mxl)
+      <input
+        type="file"
+        accept={SCORE_FILE_ACCEPT}
+        style={{ display: 'none' }}
+        onChange={handleScoreFile}
+        disabled={busy}
+        data-testid="score-file-input"
+      />
+    </label>
+  )
+  const scorePanel = scoreParsed && (
+    <ScoreImportPanel
+      key={scoreParsed.fileName + scoreParsed.byteLength}
+      thread={thread}
+      parsed={scoreParsed}
+      onDone={handleScoreDone}
+      onCancel={() => setScoreParsed(null)}
+      onError={(message) => setNotice({ kind: 'error', text: 'お手本を作れませんでした: ' + message })}
+    />
+  )
 
   return (
     <>
@@ -395,7 +471,7 @@ export default function ThreadDetail({ threadId, onBack, onOpenDiagnosis, autoRe
             <div className="card" style={{ cursor: 'default' }}>
               <div className="row">
                 <div className="title">
-                  お手本 ({referenceTake.sourceType === 'demo' ? 'デモ音源' : referenceTake.sourceType})
+                  お手本({referenceLabel(referenceTake)})
                 </div>
                 {referenceTake.noteEvents && (
                   <button
@@ -410,9 +486,18 @@ export default function ThreadDetail({ threadId, onBack, onOpenDiagnosis, autoRe
               <div className="meta">
                 {new Date(referenceTake.recordedAt).toLocaleString('ja-JP')} / 長さ{' '}
                 {(referenceTake.durationMs / 1000).toFixed(1)}秒
+                {referenceTake.scoreImport &&
+                  ` / ${referenceTake.scoreImport.notes}音 / ${referenceTake.scoreImport.fileName}` +
+                    (referenceTake.scoreImport.software ? `(${referenceTake.scoreImport.software})` : '')}
               </div>
+              {referenceTake.sourceType === 'importedScore' && (
+                <div className="meta">
+                  楽譜どおりの格子(指定テンポ)との比較になります。「ばらつき」は格子からのずれ、「テンポ差」は指定 BPM との差です。
+                </div>
+              )}
             </div>
-            <div className="stack">
+            {scoreParsed && scorePanel}
+            <div className="stack" style={scoreParsed ? { display: 'none' } : undefined}>
               <label className="secondary" style={{ display: 'block', textAlign: 'center' }}>
                 お手本を差し替える(音声/動画ファイル)
                 <input
@@ -423,6 +508,7 @@ export default function ThreadDetail({ threadId, onBack, onOpenDiagnosis, autoRe
                   disabled={busy}
                 />
               </label>
+              {scoreFileButton}
               <button className="secondary danger" onClick={handleClearReference}>
                 お手本の指定を解除する
               </button>
@@ -433,9 +519,11 @@ export default function ThreadDetail({ threadId, onBack, onOpenDiagnosis, autoRe
             <div className="note-block">
               自己比較は「毎回同じように弾けているか」しか測れないため、最初から間違えている場合は
               気づけません。お手本を設定すると「正しさ」に近い比較ができます。
-              講師などの録音を取り込むか、下のテイク履歴から自分のうまく弾けたテイクを選べます。
+              講師などの録音を取り込むか、手持ちの楽譜ファイル(MusicXML)から作るか、下のテイク履歴から自分のうまく弾けたテイクを選べます。
+              PDF の楽譜は MuseScore 4(無料)や Soundslice で MusicXML にしてから取り込めます。
             </div>
-            <div className="stack">
+            {scoreParsed && scorePanel}
+            <div className="stack" style={scoreParsed ? { display: 'none' } : undefined}>
               <label className="secondary" style={{ display: 'block', textAlign: 'center' }}>
                 お手本を設定する(音声/動画ファイル)
                 <input
@@ -446,6 +534,7 @@ export default function ThreadDetail({ threadId, onBack, onOpenDiagnosis, autoRe
                   disabled={busy}
                 />
               </label>
+              {scoreFileButton}
             </div>
           </>
         )}

@@ -356,3 +356,13 @@ button:disabled { opacity: 0.5; cursor: default; }
 /* 未達・判定なしは強調しない(責めない)。枠の色は既定のまま、文字も secondary */
 .challenge-status.missed .result { color: var(--text-secondary); }
 .challenge-status .why { font-size: 11px; color: var(--text-muted); flex-basis: 100%; }
+
+/* 楽譜ファイルからお手本を作る取り込みパネル(ScoreImportPanel) */
+.score-import select { flex: 1; min-width: 0; font-size: 13px; padding: 4px; border: 1px solid var(--gridline); border-radius: 8px; background: var(--surface-1); color: var(--text-primary); }
+.score-summary { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; font-size: 13px; }
+.score-summary .k { font-size: 11px; color: var(--text-muted); margin-right: 6px; }
+.score-warn { margin: 0; padding: 2px 0 2px 22px; font-size: 12px; line-height: 1.5; color: var(--text-primary); border-left: 3px solid var(--status-warning); }
+.score-warn-line { font-size: 12px; line-height: 1.5; color: var(--text-primary); padding-left: 8px; border-left: 3px solid var(--status-warning); }
+.score-info { font-size: 11px; color: var(--text-muted); line-height: 1.5; }
+.score-info summary { cursor: pointer; }
+.score-info ul { margin: 4px 0 0; padding-left: 18px; }

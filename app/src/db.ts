@@ -49,7 +49,9 @@ export type Take = {
   audioBlob: Blob
   // 'demo' = デモ用に合成した音声。実際の解析パイプラインは通しているが、
   // 人間が弾いた録音ではないことを区別できるようにしておく
-  sourceType: 'recorded' | 'importedAudio' | 'importedVideo' | 'demo'
+  // 'importedScore' = 利用者が持ち込んだ楽譜ファイル(MusicXML / .mxl)から作ったお手本。
+  // noteEvents は楽譜の音符列そのもので(Basic Pitch は通さない)、audioBlob はそれを合成した音
+  sourceType: 'recorded' | 'importedAudio' | 'importedVideo' | 'demo' | 'importedScore'
   recordedAt: number
   durationMs: number
   noteEvents?: NoteEvent[] // Basic Pitchでの音符起こし結果(未処理・分割統合前)。統合は解析時に行う
@@ -67,6 +69,31 @@ export type Take = {
    * 和音認識を実装する前のテイクには無い。スレッドの chordMode をONにした時に音声から埋める
    */
   chordEvents?: ChordEvent[]
+  /** sourceType 'importedScore' のお手本だけに付く、取り込み時の条件(表示と再取り込みの手掛かり) */
+  scoreImport?: ScoreImportInfo
+}
+
+/**
+ * 楽譜からお手本を作ったときの条件。インデックスではないので Dexie の version は上げていない
+ */
+export type ScoreImportInfo = {
+  fileName: string
+  title?: string
+  /** 書き出したソフト(MuseScore 4 / Soundslice 等) */
+  software?: string
+  /** 合成に使った四分音符 BPM */
+  tempoBpm: number
+  /** 'score' = 楽譜のテンポ、'override' = 利用者が指定、'default' = 楽譜にテンポが無く既定値 */
+  tempoSource: 'score' | 'default' | 'override'
+  /** 楽譜の小節番号(measures[].number)。全体を取り込んだ場合は無し */
+  measureFrom?: string
+  measureTo?: string
+  /** 採用したパート×譜表の名前 */
+  chosenParts: string[]
+  /** 取り込み時に出た警告(level 'warn' のメッセージ) */
+  warnings: string[]
+  /** 取り込んだ音数 */
+  notes: number
 }
 
 export type DeviationSegment = { startMs: number; endMs: number; severity: number }

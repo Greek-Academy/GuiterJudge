@@ -1,4 +1,4 @@
-import db, { newId, type Thread, type Take, type NoteEvent, type MetronomeSpec, type DiagnosisResult } from './db'
+import db, { newId, type Thread, type Take, type NoteEvent, type MetronomeSpec, type DiagnosisResult, type ScoreImportInfo } from './db'
 import { Recorder, decodeAudioBlob, extractAudioFromVideoFile } from './recording'
 import { transcribe, pitchRangeForTuning } from './basicPitch'
 import { diagnose } from './comparison'
@@ -7,6 +7,8 @@ import { recognizeChordsFromBuffer, diagnoseChords, type ChordDiagnosis } from '
 import { mergeSplitNotes } from './noteCleanup'
 import { analyzeGridTiming, type GridTiming } from './gridTiming'
 import { Metronome, type BeatInfo } from './metronome'
+import { synthesizeTake } from './synth'
+import type { ScoreConversion } from './score'
 
 export async function createPhraseThread(title: string): Promise<string> {
   const id = newId()
@@ -267,7 +269,11 @@ export async function setReferenceTakeFromFile(threadId: string, file: File): Pr
   const isVideo = file.type.startsWith('video/')
   const audioBlob = isVideo ? await extractAudioFromVideoFile(file) : file
   const audioBuffer = await decodeAudioBlob(audioBlob)
-  const { noteEvents, analysisOffsetMs, suppressedHarmonicCount, chordEvents } = await transcribe(audioBuffer)
+  // 録音と同じく、音域フィルタの下限はスレッドの調弦設定に合わせる
+  const thread = await db.threads.get(threadId)
+  const { noteEvents, analysisOffsetMs, suppressedHarmonicCount, chordEvents } = await transcribe(audioBuffer, {
+    pitchRange: pitchRangeForTuning(thread?.tuningLowest),
+  })
 
   // スレッドにつきお手本は1件のみ。既存のものがあれば置き換える。
   // 既存が「過去テイクを昇格させたもの(案C)」の場合は削除せず通常テイクに戻す
@@ -289,6 +295,99 @@ export async function setReferenceTakeFromFile(threadId: string, file: File): Pr
     chordEvents,
   })
   await db.threads.update(threadId, { referenceTakeId: takeId })
+}
+
+/** 変則調弦の最低音の刻み(ThreadDetail の「最低音」セレクトと同じ)。標準調弦 E2 = 40 の下 */
+const TUNING_LOWEST_STEPS = [39, 38, 37, 36, 35] as const
+
+/**
+ * 楽譜の最低音をスレッドの「最低音」の刻みに丸める(その音が入る一番高い刻み)。
+ * B1 = 35 より低い音はセレクトに無いので 35 で止める
+ */
+export function tuningLowestForScore(lowestPitch: number): number {
+  for (const step of TUNING_LOWEST_STEPS) if (step <= lowestPitch) return step
+  return TUNING_LOWEST_STEPS[TUNING_LOWEST_STEPS.length - 1]
+}
+
+export type ScoreReferenceMeta = {
+  fileName: string
+  /** 取り込んだ小節範囲(楽譜の小節番号)。全体なら無し */
+  measureFrom?: string
+  measureTo?: string
+}
+
+export type ScoreReferenceResult = {
+  takeId: string
+  /** 楽譜に標準調弦より低い音があって、スレッドの最低音を下げた場合の新しい値(MIDI) */
+  tuningLoweredTo?: number
+}
+
+/**
+ * DesignDoc Appendix C 入口D: 利用者が持ち込んだ楽譜ファイル(MusicXML / .mxl)をお手本にする。
+ * conv は小節範囲の切り出し(sliceMeasures)と BPM の指定(retime)を済ませたもの。
+ * 楽譜の音符列をそのまま noteEvents にし(Basic Pitch は通さない。採譜誤差を持ち込まないため)、
+ * audioBlob には撥弦音の合成音を入れる(再生・バックアップ・和音認識の再解析の経路をそのまま使うため)。
+ * chordEvents は付けない(楽譜から和音名を出すのは Non-goals のコード名自動判定に近い)。
+ *
+ * 楽譜にスレッドの最低音(既定 E2)より低い音があれば、以後の録音の音域フィルタで
+ * その音が捨てられて比較が崩れるので、スレッドの tuningLowest を楽譜の最低音まで下げる。
+ */
+export async function setReferenceTakeFromScore(
+  threadId: string,
+  conv: ScoreConversion,
+  meta: ScoreReferenceMeta,
+): Promise<ScoreReferenceResult> {
+  const thread = await db.threads.get(threadId)
+  if (!thread) throw new Error('スレッドが見つかりません')
+  const notes = conv.notes
+  if (notes.length === 0) throw new Error('選んだ範囲に音符がありません')
+
+  const audioBlob = synthesizeTake(notes)
+  const endMs = notes.reduce((acc, n) => Math.max(acc, n.startMs + n.durationMs), 0)
+  const durationMs = Math.max(Math.round(conv.stats.durationMs), Math.round(endMs))
+
+  const scoreImport: ScoreImportInfo = {
+    fileName: meta.fileName,
+    title: conv.stats.title || undefined,
+    software: conv.stats.software || undefined,
+    tempoBpm: Math.round(conv.tempoBpm * 10) / 10,
+    tempoSource: conv.tempoSource,
+    measureFrom: meta.measureFrom,
+    measureTo: meta.measureTo,
+    chosenParts: conv.parts.filter((p) => p.chosen).map((p) => p.partName || p.key),
+    warnings: conv.warnings.filter((w) => w.level === 'warn').map((w) => w.message),
+    notes: notes.length,
+  }
+
+  const existing = await db.takes.where({ threadId, role: 'reference' }).first()
+  if (existing) await demoteReferenceTake(existing)
+
+  const takeId = newId()
+  await db.takes.add({
+    id: takeId,
+    threadId,
+    role: 'reference',
+    audioBlob,
+    sourceType: 'importedScore',
+    recordedAt: Date.now(),
+    durationMs,
+    noteEvents: notes,
+    analysisOffsetMs: 0,
+    scoreImport,
+  })
+
+  const lowestPitch = notes.reduce((acc, n) => Math.min(acc, n.pitch), Infinity)
+  const current = thread.tuningLowest ?? 40
+  let tuningLoweredTo: number | undefined
+  if (lowestPitch < current) {
+    tuningLoweredTo = tuningLowestForScore(lowestPitch)
+    if (tuningLoweredTo >= current) tuningLoweredTo = undefined
+  }
+  await db.threads.update(threadId, {
+    referenceTakeId: takeId,
+    ...(tuningLoweredTo !== undefined ? { tuningLowest: tuningLoweredTo } : {}),
+  })
+  return { takeId, tuningLoweredTo }
 }
 
 /**
@@ -318,12 +417,13 @@ export async function clearReferenceTake(threadId: string): Promise<void> {
 
 /**
  * お手本の座から降ろす。
- * 取り込んだファイル(案B)は元々テイク履歴に無かったものなので削除するが、
+ * 取り込んだファイル(案B)・楽譜から作ったもの(入口D)は元々テイク履歴に無かったものなので削除するが、
  * 自分の過去テイクを昇格させたもの(案C)は消すと演奏の記録そのものが失われるため、
  * 通常テイクに戻すだけにする。
  */
 async function demoteReferenceTake(reference: Take): Promise<void> {
-  const wasImported = reference.sourceType === 'importedAudio' || reference.sourceType === 'importedVideo'
+  const wasImported =
+    reference.sourceType === 'importedAudio' || reference.sourceType === 'importedVideo' || reference.sourceType === 'importedScore'
   if (wasImported) {
     await db.takes.delete(reference.id)
   } else {
