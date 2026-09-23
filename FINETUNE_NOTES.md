@@ -454,3 +454,40 @@ GAPS で採用ラインを超えた。学習は 30 エポックまで継続(11 �
 - 新しいモデルのスイープ: `~/dev/guitar-data/eval/run-sweep.sh` のモデル名を変えて実行(配信ディレクトリ `eval/serve/model-*` にシンボリックリンクを置く)
 - 学習: `train/README.md`。run B の引数は `--onset-pos-weight 0.75 --onset-neighbor-frames 2`、他は README の例のまま
 - データはリポジトリに入れない(GAPS は CC BY-NC-SA 4.0。商用化の予定は無い)
+
+## 19. 蒸留 v3(開始 2026-09-23 16:37)
+
+v2 の学習曲線はエポック 20 以降も学習率 5e-4 のまま上下しながら伸びていた(18 節)。そこで v2 の最終重み(エポック 30、アプリに載せているもの)から、
+学習率を下げて 30 エポック追加学習する。構成・損失・後処理・データは v2 と同じ。
+
+- 初期重み: `~/dev/guitar-data/runs/distill/20260921-1843/model.last.pt`(v2 エポック 30)。optimizer(AdamW)とスケジューラは新規
+- 学習率: 初期 2.5e-4(v2 終盤の半分)→ コサイン減衰で 1e-5 まで、30 エポック(10,500 ステップ)。v2 の ReduceLROnPlateau は validation F1 のぶれ(±4 pt)に反応しにくく 11 エポックで 1 回しか下がらなかったので、単調に下がる形にした
+- 正例の重み: 1(素の BCE)。v2 は 2000 ステップで 20 → 1 に下げ終わっているので、再開時に重み付き BCE を掛け直すと較正が崩れる
+- early stopping は v2 と同じ patience 10(validation F1 は 1 エポック単位で ±4 pt ぶれるので、短くしない)
+- `train/distill.py` に追加した引数(既定値は従来のまま): `--init <state_dict.pt>`(重みだけ読む。学習前に一度評価して `init:` 行を出す)、`--sched {plateau,cosine}`、`--lr-min`
+- 評価グリッドは 15 節以降の広いもの(`THR_GRID`、最良は (0.3, 0.8))で記録される。v2 のログの旧グリッド値(GAPS test 82.8)とは比べず、18 節の Python 採点(GAPS 90.1 / GuitarSet 88.2)と比べる
+
+**動作確認**(`--limit-steps 30`): `init:` 行の GAPS test F1 90.1 @ (0.3, 0.8) が 18 節の eval_student.py の値と一致。30 ステップ後も 89.8 で崩れない。
+
+**コマンド**(`~/dev/guitar-data/distill/run-v3.sh`、`nohup ... > ~/dev/guitar-data/distill/full-run-v3.log 2>&1 &`):
+
+```sh
+cd ~/dev/guitar-diagnosis/train
+.venv-hfmt/bin/python distill.py --preset m --steps 350 --batch 16 --epochs 30 --patience 10 --workers 3 \
+  --init ~/dev/guitar-data/runs/distill/20260921-1843/model.last.pt \
+  --lr 2.5e-4 --sched cosine --lr-min 1e-5 \
+  --pos-weight-onset 1 --pos-weight-frame 1 --pos-weight-anneal 0 \
+  --out ~/dev/guitar-data/runs/distill-v3
+```
+
+- ログ: `~/dev/guitar-data/distill/full-run-v3.log`。出力: `~/dev/guitar-data/runs/distill-v3/<UTC タイムスタンプ>/{args.json, history.csv, model.best.pt, model.last.pt, student.onnx}`(v2 の `runs/distill/` は触らない)
+- 所要時間: 1 エポック 12 分(v2 実測 714 秒)× 30 = 約 6 時間。開始 16:37 → 終了は 23 時前後の見込み(早期終了すれば手前)
+
+**終了後の手順**(v2 の `finalize.sh` と同じ流れ。`R=$(ls -d ~/dev/guitar-data/runs/distill-v3/2*/ | tail -1)`):
+
+1. Python 採点: `cd train && .venv-hfmt/bin/python eval_student.py $R --ckpt model.last.pt` と `--ckpt model.best.pt`。GAPS test / GuitarSet test の「最良」行を 18 節(90.1 / 88.2、best 90.3 / 88.5)と比べる。両方で上回らなければ差し替えない。ONNX は `$R/model.{last,best}.onnx` に書かれる
+2. 差し替え: `cp $R/model.last.onnx app/public/student/model.onnx`(best を採るなら model.best.onnx)。戻すのは `git checkout app/public/student/model.onnx`
+3. 本番経路の採点(ヘッドレス Chrome、`~/dev/guitar-data/distill/finalize.sh` の後半と同じ): `cd app` で harness を組み直してから
+   `node eval/gaps-drive.mjs ~/dev/guitar-data/gaps <結果dir> 60 0 --split=test --engine=student` → `node eval/gaps-notes.mjs ~/dev/guitar-data/gaps <結果dir> 60`、
+   GuitarSet は `--dataset=guitarset --engine=student` で同様。18 節の 90.2 / 87.9 と比べる
+4. 結果を本ノートに追記し、`app/public/student/model.onnx` をコミットする

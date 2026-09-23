@@ -43,6 +43,9 @@ ap.add_argument("--pos-weight-anneal", type=int, default=2000, help="正例の�
 ap.add_argument("--onset-thr", type=float, default=0.3); ap.add_argument("--frame-thr", type=float, default=0.3)
 ap.add_argument("--workers", type=int, default=3)
 ap.add_argument("--limit-steps", type=int, default=0, help="動作確認用。0 以外なら学習をこのステップ数で打ち切る")
+ap.add_argument("--init", default="", help="この state_dict(.pt)を読んでから学習を始める(v3: v2 の最終重みから追加学習)。optimizer とスケジューラは新規。学習前に一度評価して出す")
+ap.add_argument("--sched", default="plateau", choices=["plateau", "cosine"], help="plateau: ReduceLROnPlateau(既定、v2 と同じ)。cosine: エポック単位のコサイン減衰(--lr → --lr-min)")
+ap.add_argument("--lr-min", type=float, default=0.0, help="--sched cosine の終端の学習率")
 args = ap.parse_args()
 dev = torch.device(args.device)
 
@@ -194,8 +197,11 @@ def main():
     # ---------- 学習 ----------
     model = build(args.preset).to(dev)
     n_params = sum(p.numel() for p in model.parameters()); print(f"student-{args.preset}: {n_params:,} params, device {dev}", flush=True)
+    if args.init:
+        model.load_state_dict(torch.load(os.path.expanduser(args.init), map_location=dev)); print(f"init weights from {args.init}", flush=True)
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
-    sched = torch.optim.lr_scheduler.ReduceLROnPlateau(opt, factor=0.5, patience=max(3, args.patience // 2))
+    if args.sched == "cosine": sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=args.epochs, eta_min=args.lr_min)
+    else: sched = torch.optim.lr_scheduler.ReduceLROnPlateau(opt, factor=0.5, patience=max(3, args.patience // 2))
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M"); run = f"{args.out}/{stamp}"; os.makedirs(run, exist_ok=True)
     json.dump(vars(args), open(f"{run}/args.json", "w"), ensure_ascii=False, indent=1)
     gaps_test = GapsTest(); print(f"gaps test: {len(gaps_test.items)} songs", flush=True)
@@ -217,6 +223,19 @@ def main():
         l_g = wbce(o, g_on, pw(args.pos_weight_onset)) + wbce(f, g_fr, pw(args.pos_weight_frame))
         return l_t + args.gt_weight * l_g
 
+    def evaluate():
+        """validation 損失(10 秒 × 32 本、固定シード)と、validation / GAPS test の音符 F1(閾値グリッドごと)"""
+        model.eval()
+        vl = 0.0; vg = torch.Generator().manual_seed(0); vit = iter(torch.utils.data.DataLoader(Crops({"gaps": [f for f in val_files if "/gaps/" in f], "guitarset": [f for f in val_files if "/guitarset/" in f]}, args.gaps_ratio), batch_size=16))
+        with torch.no_grad():
+            for _ in range(2):
+                mel, t_on, t_fr, g_on, g_fr = [x.to(dev) for x in next(vit)]; o, f = model(mel); vl += loss_fn(o, f, t_on, t_fr, g_on, g_fr).item() / 2
+        return vl, eval_npz(model, val_files), gaps_test.f1(model)
+
+    if args.init:  # 読んだ重みの実力を学習前に記録する(前回の最終 validation / test 付近から始まることの確認)
+        vl, vres, tres = evaluate(); vthr = max(THR_GRID, key=lambda t: vres[t][2]); tbest = max(THR_GRID, key=lambda t: tres[t][2])
+        print(f"init: val {vl:.4f} | val F1 {100*vres[vthr][2]:.1f} (P {100*vres[vthr][0]:.1f} R {100*vres[vthr][1]:.1f}) @thr/gate {vthr} | GAPS test F1 {100*tres[vthr][2]:.1f} [test 最良 {tbest}: {100*tres[tbest][2]:.1f}]", flush=True)
+
     for epoch in range(1, args.epochs + 1):
         model.train(); t0 = time.time(); tot = 0.0
         for step in range(args.steps):
@@ -226,19 +245,13 @@ def main():
             tot += loss.item(); step_total += 1; state["step"] = step_total
             if step % 100 == 0: print(f"  ep {epoch} step {step} loss {loss.item():.4f}  {time.time()-t0:.0f}s", flush=True)
             if args.limit_steps and step_total >= args.limit_steps: break
-        model.eval()
-        # validation 損失(10 秒 × 32 本、固定シード)
-        vl = 0.0; vg = torch.Generator().manual_seed(0); vit = iter(torch.utils.data.DataLoader(Crops({"gaps": [f for f in val_files if "/gaps/" in f], "guitarset": [f for f in val_files if "/guitarset/" in f]}, args.gaps_ratio), batch_size=16))
-        with torch.no_grad():
-            for _ in range(2):
-                mel, t_on, t_fr, g_on, g_fr = [x.to(dev) for x in next(vit)]; o, f = model(mel); vl += loss_fn(o, f, t_on, t_fr, g_on, g_fr).item() / 2
-        vres = eval_npz(model, val_files); tres = gaps_test.f1(model)
+        vl, vres, tres = evaluate()
         vthr = max(THR_GRID, key=lambda t: vres[t][2]); vp, vr, vf = vres[vthr]
         tp, tr_, tf = tres[vthr]; tbest = max(THR_GRID, key=lambda t: tres[t][2])
         lr = opt.param_groups[0]["lr"]; sec = time.time() - t0
         print(f"epoch {epoch}: train {tot/max(step+1,1):.4f} val {vl:.4f} | val F1 {100*vf:.1f} (P {100*vp:.1f} R {100*vr:.1f}) @thr/gate {vthr} | GAPS test F1 {100*tf:.1f} (P {100*tp:.1f} R {100*tr_:.1f}) [test 最良 {tbest}: {100*tres[tbest][2]:.1f}] | pw {pw(args.pos_weight_onset):.1f} lr {lr:g} {sec:.0f}s", flush=True)
         hist.write(f"{epoch},{tot/max(step+1,1):.5f},{vl:.5f},{vf:.4f},{vp:.4f},{vr:.4f},{tf:.4f},{tp:.4f},{tr_:.4f},{lr:g},{sec:.0f},{vthr[0]}/{vthr[1]},{tbest[0]}/{tbest[1]},{tres[tbest][2]:.4f}\n"); hist.flush()
-        sched.step(-vf)
+        sched.step(-vf) if args.sched == "plateau" else sched.step()
         torch.save(model.state_dict(), f"{run}/model.last.pt")
         if vf > best_val: best_val = vf; bad = 0; torch.save(model.state_dict(), f"{run}/model.best.pt")
         else:

@@ -99,6 +99,7 @@ cp <run-dir>/model.last.onnx ../app/public/student/model.onnx           # アプ
 
 - 生徒は `student.py`(教師と同じ骨格 1 本 + onset 精密化 GRU、プリセット s / m / l)。v2 = m で GAPS test F1 90.1 / GuitarSet 88.2(教師 94.7 / 90.4、Basic Pitch 81 / 82)
 - 後処理は onset 0.3 / frame ゲート 0.8(`app/src/student/postprocess.ts` と同じ)。経緯は `FINETUNE_NOTES.md` 12〜18 節
+- 既存の重みから追加学習: `distill.py --init <run-dir>/model.last.pt --lr 2.5e-4 --sched cosine --lr-min 1e-5 --pos-weight-onset 1 --pos-weight-frame 1 --pos-weight-anneal 0`(v3、`FINETUNE_NOTES.md` 19 節)。重みだけ読み、学習前に一度評価して `init:` 行に出す
 
 ### 段階 1 の詳細
 
