@@ -31,6 +31,15 @@ export type PitchRange = { min: number; max: number }
  */
 export const GUITAR_PITCH_RANGE: PitchRange = { min: 40, max: 88 }
 
+/**
+ * スレッドの調弦に合わせた音域。lowest は Thread.tuningLowest(変則調弦の最低音、MIDI)。
+ * 未設定なら標準調弦(E2 = 40)。上限は調弦で変わらないので GUITAR_PITCH_RANGE のまま
+ */
+export function pitchRangeForTuning(lowest?: number | null): PitchRange {
+  const min = lowest ?? GUITAR_PITCH_RANGE.min
+  return min === GUITAR_PITCH_RANGE.min ? GUITAR_PITCH_RANGE : { min, max: GUITAR_PITCH_RANGE.max }
+}
+
 // CDN依存・オフライン動作の観点から、モデルはpublic/にセルフホストしてService Workerのプリキャッシュ対象にする
 const MODEL_URL = `${import.meta.env.BASE_URL}model/model.json`
 

@@ -42,7 +42,7 @@ PRD は「何を作るか」、Design Doc は「どう作るか（検討過程�
 | 単音フレーズ | 音の間隔 **300ms 程度以上** |
 | 分散和音（アルペジオ） | 同上 |
 | 和音（ストローク）の**コード進行** | 「和音の練習」を ON にしたスレッド。メジャー/マイナー/7th/m7 のコード名と切り替え時刻を取る（音符単位ではない）。実録音（GuitarSet）でストローク系はルート 84〜93%、ジャズ・ファンク系は 51〜64%（5.6 節） |
-| 音域 | MIDI **40（E2）〜 88（E6）**。範囲外の検出は破棄する |
+| 音域 | MIDI **40（E2）〜 88（E6）**。範囲外の検出は破棄する。下限はスレッドの「最低音」設定（`Thread.tuningLowest`、ドロップ D = 38 など）で下げられる |
 | 入力 | マイク録音 / 音声ファイル / 動画ファイル（音声トラックのみ抽出） |
 
 ### 対応しない（実測により判明）
@@ -52,7 +52,7 @@ PRD は「何を作るか」、Design Doc は「どう作るか（検討過程�
 | 和音（ストローク）の**音符単位**の診断 | 6音同時打弦を Basic Pitch が安定分解できず、安定度スコアが 0 に張り付く。コード進行としての診断（和音認識）で代替する |
 | 速いパッセージ（間隔 178ms 程度） | 取りこぼしが増え、スコアが 26 まで落ちる |
 | リアルタイム（演奏中）フィードバック | 録音 → 事後比較のみ |
-| 変則チューニング・カポ | 音域フィルタが標準チューニング固定（コード上は差し替え可能） |
+| カポ | 音域フィルタの上限は標準チューニング固定（カポで上限が上がることは実用上ない）。変則調弦の**下限**はスレッド設定で対応（2026-09-23） |
 | マルチデバイス同期 | v1 Non-goal |
 
 ---
@@ -115,6 +115,7 @@ Thread {
   referenceTakeId?: string,
   metronome?: MetronomeSpec,
   chordMode?: boolean                  // 和音の練習。ON のスレッドだけコード進行を画面に出す
+  tuningLowest?: number                // 変則調弦の最低音（MIDI）。音符起こしの音域フィルタ下限。無ければ 40（E2）
 }
 
 Take {
@@ -137,6 +138,7 @@ DiagnosisResult {
   compareMode: 'prev' | 'best' | 'reference',
   noteMatchRate, missedOrExtraNoteCount, alignedNoteCount, mergedNoteCount,
   timingJitterMs, tempoDiffPct, onsetOffsetMs,
+  tempoScale?,                          // テンポ事前正規化の採用倍率（2026-09-23 以降の診断のみ）
   deviationTimeline: { startMs, endMs, severity }[],
   resolvedSelfCheck?: 'yes' | 'no' | 'unsure',
   // 両テイクに chordEvents があるときだけ
@@ -171,7 +173,7 @@ SongThroughCompletion { id, threadId, at, durationMs, note? }
 録音停止
   → decodeAudioData（共有 AudioContext）
   → 前処理: 22050Hz モノラル化 → 無音トリム → 音量正規化
-  → Basic Pitch 推論 → 閾値処理で音符化 → 音域フィルタ → startMs 昇順ソート
+  → Basic Pitch 推論 → 閾値処理で音符化 → 音域フィルタ（下限はスレッドの tuningLowest） → startMs 昇順ソート
   → 同じ前処理済みバッファで和音認識（FFT → クロマ → テンプレート照合 → Viterbi）→ chordEvents
   → Take を保存
   → 比較対象を決定
@@ -213,7 +215,7 @@ Mac 上の `train/serve_transcribe.py`（GAPS 論文の公開モデル、GAPS te
 | `onsetThreshold` | 0.7 |
 | `frameThreshold` | 0.5 |
 | `minNoteFrames` | 5 |
-| 音域フィルタ | MIDI 40〜88（`GUITAR_PITCH_RANGE`）。`null` で無効化可能 |
+| 音域フィルタ | MIDI 40〜88（`GUITAR_PITCH_RANGE`）。`null` で無効化可能。録音経路は `pitchRangeForTuning(thread.tuningLowest)` で下限だけ差し替える（ドロップ D = 38、半音下げ = 39、ドロップ C = 36 など。ThreadDetail のスレッド設定「最低音」） |
 
 - 推論（`runModel`）と閾値処理（`notesFromModelOutput`）を分離しており、
   **閾値スイープに再推論は不要**（検証画面はこれを利用して 36 通りを総当たりする）
@@ -252,6 +254,15 @@ pairCost(a, b) = |pitch差| + |startMs差| / 100
 
 出力は `{ ref?, take? }` のペア列で、片側が `undefined` なら弾き忘れ（`ref` のみ）／余分な音（`take` のみ）。
 
+**2 パス + テンポ事前正規化**（`alignForDiagnosis`、2026-09-23）: 仮アライメント → 対応の開始時刻に直線 `take = a + b·ref` を当てる →
+補正した時間軸で再アライメント、の 2 パスが基本。ただしテンポ差 × フレーズ長のドリフトが挿入削除コスト（600ms 相当）を超えると
+1 パス目が崩れて回復しない（格子どおりのお手本 23 秒・55 音でテンポ差 5% → 対応 46/55、ジッタ 313ms、推定テンポ差 0.4%）。
+そこで、**テイク全体の長さ（最初の音〜最後の音）の比**で take の時間軸を縮めた候補（端から k = 0, 1, 2 音目どうしで測った 3 通り、
+比は 0.4〜2.5 に制限）も同じ 2 パスに通し、正規化なしを含む候補の中から **2 パス目のアライメント総コストが最小**のものを採る（同点なら正規化なし）。
+テンポ差が小さければ候補どうしの 1 パス目の対応は同じになり、直線フィットは線形変換に不変なので、結果は従来と一致する。
+純粋なテンポ差は 5〜67% まで全対応（55/55、ジッタ 25ms）に回復する。ルバート（局所的なテンポ揺れ ±8%）には効かない。
+数字は `docs/score-import/tempo-normalization.md`。
+
 ### 5.5 診断メトリクス
 
 | 指標 | 定義 |
@@ -260,8 +271,9 @@ pairCost(a, b) = |pitch差| + |startMs差| / 100
 | `matchedFraction` | 全ペアのうち、対応が付いたペアの割合（内部値、保存しない） |
 | `missedOrExtraNoteCount` | 対応が付かなかったペア数（弾き忘れ + 余分） |
 | `timingJitterMs` | 対応が付いたペアの開始時刻差から、全体オフセットとテンポ差（直線フィット）を除いた残差の標準偏差 |
-| `tempoDiffPct` | 直線フィットの傾き − 1。正なら今回のほうが速い |
+| `tempoDiffPct` | 直線フィット `take = a + b·ref` の傾き `b` は「今回の所要時間 / 基準の所要時間」なので、テンポ比 `1/b − 1`（事前正規化の倍率込み）。正なら今回のほうが速い。**2026-09-23 まで `b − 1` を返していて符号が逆だった**（テンポ差が数%を超えると推定自体が崩れて 0% 付近に張り付いていたため表面化していなかった）。保存済みの診断は作り直さず、次に比較した時から新しい値になる |
 | `onsetOffsetMs` | 直線フィットの切片。録音開始の間の取り方の差で、演奏の質ではない |
+| `tempoScale` | 採用したテンポ事前正規化の倍率（take の時間軸を 1/tempoScale に縮めた）。1 = 正規化なし。任意フィールド |
 | `alignedNoteCount` | 対応が付いた音の数（ばらつき推定の信頼度の根拠） |
 | `mergedNoteCount` | 分割統合で畳んだ音の数（両テイク合計） |
 | `deviationTimeline` | 基準側の音ごとの区間と severity |

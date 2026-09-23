@@ -33,6 +33,11 @@ export type Thread = {
    * ユーザーが「これは和音の練習」と宣言したスレッドだけで見せる
    */
   chordMode?: boolean
+  /**
+   * 変則調弦の最低音(MIDI)。音符起こしの音域フィルタの下限に使う(basicPitch.ts の GUITAR_PITCH_RANGE.min = 40 = E2 が既定)。
+   * ドロップ D なら 38、半音下げなら 39。無ければ標準調弦。インデックスではないので Dexie の version は上げていない
+   */
+  tuningLowest?: number
 }
 
 export type NoteEvent = { pitch: number; startMs: number; durationMs: number; velocity?: number }
@@ -83,6 +88,8 @@ export type DiagnosisResult = {
   tempoDiffPct: number
   onsetOffsetMs: number
   deviationTimeline: DeviationSegment[]
+  /** テンポ事前正規化(comparison.ts)の採用倍率。正規化を入れる前(2026-09-23 以前)に保存した診断には無い */
+  tempoScale?: number
   resolvedSelfCheck?: 'yes' | 'no' | 'unsure' // Section6「解決済みにする」時の自己確認ステップの回答
   /** コード進行の比較(chordRecognition.ts の diagnoseChords)。両テイクに chordEvents がある場合だけ入る */
   chordMatchRate?: number

@@ -10,6 +10,7 @@ import {
   resolveThread,
   setThreadMetronome,
   setThreadChordMode,
+  setThreadTuningLowest,
 } from '../actions'
 import { playNoteEvents } from '../preview'
 import { formatProgression } from '../chordRecognition'
@@ -41,6 +42,16 @@ type Props = {
 }
 
 type Notice = { kind: 'success' | 'error'; text: string }
+
+/** 音域フィルタの下限(Thread.tuningLowest)の選択肢。標準調弦の E2 = 40 が既定 */
+const TUNING_LOWEST_OPTIONS: { midi: number; label: string }[] = [
+  { midi: 40, label: 'E2(標準調弦)' },
+  { midi: 39, label: 'E♭2(半音下げ)' },
+  { midi: 38, label: 'D2(ドロップ D / 全音下げ)' },
+  { midi: 37, label: 'C♯2' },
+  { midi: 36, label: 'C2(ドロップ C)' },
+  { midi: 35, label: 'B1(7 弦 / バリトン)' },
+]
 
 export default function ThreadDetail({ threadId, onBack, onOpenDiagnosis, autoRecord = false }: Props) {
   const [isRecording, setIsRecording] = useState(false)
@@ -311,6 +322,32 @@ export default function ThreadDetail({ threadId, onBack, onOpenDiagnosis, autoRe
               ) : (
                 <div className="meta" style={{ margin: 0 }}>
                   メトロノームなしでも録れますが、その場合の安定度は「直前のテイクとの差」でしか測れません。
+                </div>
+              )}
+            </div>
+            {/* 変則調弦。音符起こしの音域フィルタは標準調弦の最低音 E2 より下を捨てるので、
+                ドロップ D 等では 6 弦の音が消える。下限だけをスレッド単位で下げられるようにする */}
+            <div className="metro-panel">
+              <div className="row metro-row">
+                <span className="lbl">最低音</span>
+                <select
+                  value={thread.tuningLowest ?? 40}
+                  disabled={busy}
+                  onChange={(e) => {
+                    const v = Number(e.target.value)
+                    void setThreadTuningLowest(threadId, v === 40 ? null : v)
+                  }}
+                >
+                  {TUNING_LOWEST_OPTIONS.map((o) => (
+                    <option key={o.midi} value={o.midi}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {(thread.tuningLowest ?? 40) !== 40 && (
+                <div className="meta" style={{ margin: 0 }}>
+                  この設定以降に録るテイクに効きます。すでに録ったテイクは起こし直しません。
                 </div>
               )}
             </div>

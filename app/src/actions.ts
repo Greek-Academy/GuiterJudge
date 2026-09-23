@@ -1,6 +1,6 @@
 import db, { newId, type Thread, type Take, type NoteEvent, type MetronomeSpec, type DiagnosisResult } from './db'
 import { Recorder, decodeAudioBlob, extractAudioFromVideoFile } from './recording'
-import { transcribe } from './basicPitch'
+import { transcribe, pitchRangeForTuning } from './basicPitch'
 import { diagnose } from './comparison'
 import { preprocessForAnalysis } from './preprocess'
 import { recognizeChordsFromBuffer, diagnoseChords, type ChordDiagnosis } from './chordRecognition'
@@ -27,6 +27,15 @@ export async function createSongThroughThread(title: string): Promise<string> {
 /** スレッドのメトロノーム既定値を保存する(nullで「メトロノームなし」) */
 export async function setThreadMetronome(threadId: string, spec: MetronomeSpec | null): Promise<void> {
   await db.threads.update(threadId, { metronome: spec ?? undefined })
+}
+
+/**
+ * スレッドの変則調弦の最低音(MIDI)を保存する(null で標準調弦 = E2)。
+ * 以後このスレッドで録るテイクの音符起こしは、この音まで音域フィルタを広げる。
+ * 保存済みテイクは再解析しない(フィルタで落ちた音は noteEvents に無いので、音声から起こし直すしかない)
+ */
+export async function setThreadTuningLowest(threadId: string, lowest: number | null): Promise<void> {
+  await db.threads.update(threadId, { tuningLowest: lowest ?? undefined })
 }
 
 let activeRecorder: Recorder | null = null
@@ -78,7 +87,11 @@ export async function stopRecordingAndDiagnose(threadId: string): Promise<{ take
 
   const takeId = newId()
   const audioBuffer = await decodeAudioBlob(blob)
-  const { noteEvents, analysisOffsetMs, suppressedHarmonicCount, chordEvents } = await transcribe(audioBuffer)
+  // 音域フィルタの下限はスレッドの調弦設定(ドロップ D 等)に合わせる
+  const thread = await db.threads.get(threadId)
+  const { noteEvents, analysisOffsetMs, suppressedHarmonicCount, chordEvents } = await transcribe(audioBuffer, {
+    pitchRange: pitchRangeForTuning(thread?.tuningLowest),
+  })
 
   const take: Take = {
     id: takeId,

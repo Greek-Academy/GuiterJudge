@@ -97,15 +97,96 @@ export type DiagnosisAlignment = {
   take: NoteEvent[]
   /** 補正後の時間軸で取り直した対応。take側の音符は元の時刻のまま返す */
   pairs: NoteAlignmentPair[]
+  /** take = offsetMs + ratio * ref。事前正規化の倍率も畳み込んだ「元の時刻どうし」の直線 */
   fit: TimeFit
+  /** 採用した事前正規化の倍率(take の時間軸を 1/tempoScale に縮めてからアライメントした)。1 = 正規化なし */
+  tempoScale: number
   mergedNoteCount: number
 }
 
 /**
- * 診断用のアライメント。分割統合 → 仮アライメント → オフセット/テンポ差の推定 →
+ * テンポ事前正規化の候補。take の時刻 t を (t - anchorTakeMs) / scale + anchorRefMs に写してからアライメントする。
+ * scale = 1, anchor 0 は「何もしない」= 従来どおりの経路で、候補に必ず含める。
+ */
+type Prescale = { scale: number; anchorRefMs: number; anchorTakeMs: number }
+
+/** 事前正規化を試みる最小の音数と、テンポ比を測るのに必要な最小の長さ(短いと 1 音の揺れで比が飛ぶ) */
+const PRESCALE_MIN_NOTES = 4
+const PRESCALE_MIN_SPAN_MS = 1000
+/** 人間の練習で起きうるテンポ比の範囲(0.4 = 2.5 倍速い、2.5 = 2.5 倍遅い)。外れたら比の推定が壊れているとみなす */
+const PRESCALE_SCALE_MIN = 0.4
+const PRESCALE_SCALE_MAX = 2.5
+
+/**
+ * テンポ比の候補: テイク全体の長さ(最初の音〜最後の音)の比。
+ * 両端の音が余分/弾き忘れだと比がずれるので、端から k 音目どうし(k = 0, 1, 2)で測った 3 通りを出す。
+ * 最終的な傾きは候補の上で直線フィットが取り直すので、候補は「1 パス目のアライメントが崩れない程度」に近ければよい。
+ */
+function prescaleCandidates(ref: NoteEvent[], take: NoteEvent[]): Prescale[] {
+  const out: Prescale[] = [{ scale: 1, anchorRefMs: 0, anchorTakeMs: 0 }]
+  const n = ref.length
+  const m = take.length
+  if (n < PRESCALE_MIN_NOTES || m < PRESCALE_MIN_NOTES) return out
+  for (let k = 0; k <= 2; k++) {
+    if (n - 1 - k <= k || m - 1 - k <= k) break
+    const spanRef = ref[n - 1 - k].startMs - ref[k].startMs
+    const spanTake = take[m - 1 - k].startMs - take[k].startMs
+    if (spanRef < PRESCALE_MIN_SPAN_MS || spanTake < PRESCALE_MIN_SPAN_MS) continue
+    const scale = spanTake / spanRef
+    if (scale < PRESCALE_SCALE_MIN || scale > PRESCALE_SCALE_MAX) continue
+    out.push({ scale, anchorRefMs: ref[k].startMs, anchorTakeMs: take[k].startMs })
+  }
+  return out
+}
+
+type IndexedNote = NoteEvent & { index: number }
+
+type AlignmentTrial = {
+  pairs: NoteAlignmentPair[]
+  fit: TimeFit
+  matched: number
+  /** 2 パス目のアライメントの総コスト(対応: 音高差 + 残差/100、非対応: 挿入削除コスト)。候補の選択基準 */
+  cost: number
+}
+
+/**
+ * 1 つの事前正規化候補について、従来の 2 パス(仮アライメント → 直線フィット → 補正した時間軸で再アライメント)を回す。
+ * 返す fit と pairs は元の時刻の take に戻してある。
+ */
+function alignWithPrescale(ref: NoteEvent[], take: NoteEvent[], p: Prescale): AlignmentTrial {
+  const normalized = take.map((t) => ({ ...t, startMs: (t.startMs - p.anchorTakeMs) / p.scale + p.anchorRefMs }))
+  const fitN = fitTimeMap(alignNoteSequences(ref, normalized))
+  // normalized = a + b * ref、normalized = (t - anchorTake) / scale + anchorRef を合成して t = A + B * ref に戻す
+  const fit: TimeFit = { offsetMs: p.anchorTakeMs + p.scale * (fitN.offsetMs - p.anchorRefMs), ratio: p.scale * fitN.ratio }
+  const corrected: IndexedNote[] = take.map((t, i) => ({ ...t, startMs: (t.startMs - fit.offsetMs) / fit.ratio, index: i }))
+  const rawPairs = alignNoteSequences(ref, corrected)
+  const pairs: NoteAlignmentPair[] = rawPairs.map((q) => ({
+    ref: q.ref,
+    take: q.take ? take[(q.take as IndexedNote).index] : undefined,
+  }))
+  let matched = 0
+  let cost = 0
+  for (const q of rawPairs) {
+    if (q.ref && q.take) {
+      matched++
+      cost += pairCost(q.ref, q.take)
+    } else cost += INSERT_DELETE_COST
+  }
+  return { pairs, fit, matched, cost }
+}
+
+/**
+ * 診断用のアライメント。分割統合 → (テンポ事前正規化の候補ごとに)仮アライメント → オフセット/テンポ差の推定 →
  * 補正した時間軸で再アライメント、の2パス。
  * 1パスだと、テンポが数%違うだけでフレーズ後半の時刻差が数百msに達し、
  * 「対応付け」より「弾き忘れ+余分」と解釈するほうが安くなって対応が崩れる。
+ *
+ * 2 パスでも、テンポ差 × フレーズ長のドリフトが挿入削除コスト(600ms 相当)を超えると 1 パス目が崩れ、
+ * 直線フィットも崩れて回復しない(格子どおりのお手本 23 秒でテンポ差 5% → 対応 46/55、ジッタ 313ms、
+ * 推定テンポ差 0.4%。docs/score-import/tempo-normalization.md)。そこで、テイク全体の長さの比で
+ * take の時間軸を先に縮めた候補も同じ 2 パスに通し、2 パス目のアライメント総コストが最小(同じなら
+ * 正規化なし)のものを採る。テンポ差が小さければ候補どうしの 1 パス目の対応は同じになり、
+ * 直線フィットは線形変換に対して不変なので結果は正規化なしと一致する。
  */
 export function alignForDiagnosis(refRaw: NoteEvent[], takeRaw: NoteEvent[]): DiagnosisAlignment {
   const refMerged = mergeSplitNotes(refRaw)
@@ -113,13 +194,19 @@ export function alignForDiagnosis(refRaw: NoteEvent[], takeRaw: NoteEvent[]): Di
   const ref = refMerged.notes
   const take = takeMerged.notes
 
-  const fit = fitTimeMap(alignNoteSequences(ref, take))
-  const corrected = take.map((n) => ({ ...n, startMs: (n.startMs - fit.offsetMs) / fit.ratio }))
-  const pairs = alignNoteSequences(ref, corrected).map((p) => ({
-    ref: p.ref,
-    take: p.take ? take[corrected.indexOf(p.take)] : undefined,
-  }))
-  return { ref, take, pairs, fit, mergedNoteCount: refMerged.mergedCount + takeMerged.mergedCount }
+  let best: AlignmentTrial | null = null
+  let bestScale = 1
+  for (const p of prescaleCandidates(ref, take)) {
+    const trial = alignWithPrescale(ref, take, p)
+    // 総コストで選ぶ(対応数の最大化だと、残差の大きい対応を 1 つ増やすだけの候補が勝ってしまう)。
+    // 非対応は 1 音 6、対応は音高差 + 残差 100ms あたり 1 なので、対応を増やしつつ残差を小さくする候補が残る
+    if (!best || trial.cost < best.cost - 1e-9) {
+      best = trial
+      bestScale = p.scale
+    }
+  }
+  const { pairs, fit } = best!
+  return { ref, take, pairs, fit, tempoScale: bestScale, mergedNoteCount: refMerged.mergedCount + takeMerged.mergedCount }
 }
 
 export type DiagnosisMetrics = {
@@ -133,8 +220,14 @@ export type DiagnosisMetrics = {
   mergedNoteCount: number
   /** オフセットとテンポ差を除いた残差の標準偏差(ms)。テイク間の相対的なばらつき */
   timingJitterMs: number
-  /** 基準に対するテンポ差(%)。正なら今回のほうが速い */
+  /**
+   * 基準に対するテンポ差(%)。正なら今回のほうが速い。
+   * 直線 take = a + b * ref の傾き b は「今回の所要時間 / 基準の所要時間」なので、テンポ比は 1/b。
+   * (以前は b - 1 を返していて符号が逆だった。テンポ差が数%を超えると推定自体が崩れていたので表面化していなかった)
+   */
   tempoDiffPct: number
+  /** 採用したテンポ事前正規化の倍率(1 = 正規化なし)。tempoDiffPct にはこれも含まれている */
+  tempoScale: number
   /** 基準に対する全体の時間オフセット(ms)。録音開始の間の取り方の差で、演奏の質ではない */
   onsetOffsetMs: number
   deviationTimeline: DeviationSegment[]
@@ -157,7 +250,7 @@ const TIMING_FLAG_MS = 80
  * 代わりに、単位を持つ量に分解してそのまま返す。ばらつきは ms、一致率は %。
  */
 export function diagnose(refRaw: NoteEvent[], takeRaw: NoteEvent[]): DiagnosisMetrics {
-  const { pairs, fit, mergedNoteCount } = alignForDiagnosis(refRaw, takeRaw)
+  const { pairs, fit, tempoScale, mergedNoteCount } = alignForDiagnosis(refRaw, takeRaw)
   const matched = pairs.filter((p) => p.ref && p.take)
   const missedOrExtraNoteCount = pairs.length - matched.length
 
@@ -187,7 +280,8 @@ export function diagnose(refRaw: NoteEvent[], takeRaw: NoteEvent[]): DiagnosisMe
     alignedNoteCount: matched.length,
     mergedNoteCount,
     timingJitterMs: Math.round(timingJitterMs * 10) / 10,
-    tempoDiffPct: Math.round((fit.ratio - 1) * 100 * 100) / 100,
+    tempoDiffPct: Math.round((1 / fit.ratio - 1) * 100 * 100) / 100,
+    tempoScale: Math.round(tempoScale * 1000) / 1000,
     onsetOffsetMs: Math.round(fit.offsetMs),
     deviationTimeline,
   }
