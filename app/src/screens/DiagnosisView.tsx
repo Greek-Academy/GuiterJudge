@@ -79,8 +79,9 @@ export default function DiagnosisView({ threadId, takeId, onBack, onRecordAgain,
     const ref = comparedTake?.noteEvents
     const cur = take?.noteEvents
     if (!ref || !cur) return null
-    return alignForDiagnosis(ref, cur)
-  }, [comparedTake?.noteEvents, take?.noteEvents])
+    // 保存済み指標(actions.ts の diagnose)と同じく、比較対象が楽譜お手本なら楽譜用の扱いにする
+    return alignForDiagnosis(ref, cur, { referenceIsScore: comparedTake?.sourceType === 'importedScore' })
+  }, [comparedTake?.noteEvents, comparedTake?.sourceType, take?.noteEvents])
 
   const rollNotes = useMemo<PianoRollNote[]>(() => {
     if (!alignment) return []

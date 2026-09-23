@@ -177,6 +177,7 @@ db.version(2)
         comparedToTakeId: r.comparedToTakeId,
         compareMode: r.compareMode,
         resolvedSelfCheck: r.resolvedSelfCheck,
+        // referenceIsScore は渡さない: この upgrade が扱うのは P2 以前のデータで、楽譜お手本(importedScore)はまだ存在しない
         ...diagnose(ref, cur),
       })
     }

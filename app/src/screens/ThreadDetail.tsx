@@ -23,6 +23,7 @@ import ScoreTrend, { type ScoreTrendPoint } from '../components/ScoreTrend'
 import { JITTER_METRIC, RELATIVE_JITTER_METRIC } from '../components/trendMetrics'
 import StabilityGauge from '../components/StabilityGauge'
 import { useStabilityGauge } from '../habit/useStabilityGauge'
+import { useThreadTakesAsc } from '../habit/useThreadTakes'
 import { GAUGE_MAX } from '../habit/verdict'
 import { micPermissionGranted } from '../habit/micPermission'
 
@@ -111,6 +112,9 @@ export default function ThreadDetail({ threadId, onBack, onOpenDiagnosis, autoRe
   const gauge = useStabilityGauge(threadId)
   const gaugeFull = gauge.available && gauge.value >= GAUGE_MAX
   const referenceTake = useLiveQuery(() => db.takes.where({ threadId, role: 'reference' }).first(), [threadId])
+  // 直前比(compareMode 'prev')の診断。保存済みが無いテイク(お手本ありスレッドなど)はその場で計算して埋めてある。
+  // ゲージ・対戦カードと同じ判定源なので、推移グラフの数字もそれらと揃う
+  const { prevDiagByTake } = useThreadTakesAsc(threadId)
   const diagnosisByTake = useLiveQuery(async () => {
     const results = await db.diagnosisResults.toArray()
     const map = new Map<string, (typeof results)[number]>()
@@ -122,6 +126,7 @@ export default function ThreadDetail({ threadId, onBack, onOpenDiagnosis, autoRe
   // メトロノーム録音(拍に対する絶対ばらつき)があればそれを描く。比較対象が要らないので
   // 1本目のテイクから点が付き、日をまたいでも同じ物差しで並ぶ。
   // 無ければ直前比較の相対ばらつきで代用する(各スレッドの最初のテイクは比較対象が無く点が無い)。
+  // お手本ありスレッドの保存済み診断はお手本との比較なので使わず、直前比の Map(prevDiagByTake)から引く。
   const trend = useMemo(() => {
     const ascending = [...(takes ?? [])].reverse()
     const gridPoints: ScoreTrendPoint[] = []
@@ -136,13 +141,13 @@ export default function ThreadDetail({ threadId, onBack, onOpenDiagnosis, autoRe
     const points: ScoreTrendPoint[] = []
     const takeIds: string[] = []
     for (const t of ascending) {
-      const d = diagnosisByTake?.get(t.id)
+      const d = prevDiagByTake?.get(t.id)
       if (!d) continue
       points.push({ at: t.recordedAt, value: d.timingJitterMs, label: `${(t.durationMs / 1000).toFixed(1)}秒` })
       takeIds.push(t.id)
     }
     return { points, takeIds, metric: RELATIVE_JITTER_METRIC }
-  }, [takes, diagnosisByTake])
+  }, [takes, prevDiagByTake])
 
   async function handleChordModeToggle(on: boolean) {
     setNotice(null)
@@ -567,6 +572,8 @@ export default function ThreadDetail({ threadId, onBack, onOpenDiagnosis, autoRe
         )}
         {(takes ?? []).map((t) => {
           const d = diagnosisByTake?.get(t.id)
+          // 「前回比」バッジは直前比だけ。保存済み d はお手本比較のことがあるので、推移グラフと同じ Map から引く
+          const pd = prevDiagByTake?.get(t.id)
           return (
             <div className="card" key={t.id} onClick={() => onOpenDiagnosis(t.id)}>
               <div className="row">
@@ -577,8 +584,8 @@ export default function ThreadDetail({ threadId, onBack, onOpenDiagnosis, autoRe
                 )}
                 {t.gridTiming ? (
                   <span className="badge">ばらつき {Math.round(t.gridTiming.jitterMs)}ms</span>
-                ) : d ? (
-                  <span className="badge">前回比 {Math.round(d.timingJitterMs)}ms</span>
+                ) : pd ? (
+                  <span className="badge">前回比 {Math.round(pd.timingJitterMs)}ms</span>
                 ) : null}
               </div>
               {thread.chordMode && t.chordEvents && (
