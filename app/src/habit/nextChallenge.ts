@@ -1,7 +1,7 @@
 import { useMemo, useSyncExternalStore } from 'react'
 import type { Take } from '../db'
 import { LOW_CONFIDENCE } from '../gridTiming'
-import { isHabitTake, startOfDay } from './dailyStats'
+import { isHabitTake, startOfNextDay } from './dailyStats'
 
 // 「明日の予告」(C13)。翌日の起動理由を、前日の自分の数字で仕込む。
 //
@@ -83,9 +83,7 @@ export function isChallengeExpired(c: NextChallenge, now = Date.now()): boolean 
 
 /** 予告に挑む日の始まり = 作成日の翌日 0:00(ローカル) */
 export function challengeDueStart(c: NextChallenge): number {
-  const d = new Date(startOfDay(c.madeAt))
-  d.setDate(d.getDate() + 1)
-  return d.getTime()
+  return startOfNextDay(c.madeAt)
 }
 
 /**

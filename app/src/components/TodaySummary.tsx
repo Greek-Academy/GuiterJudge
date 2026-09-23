@@ -4,6 +4,7 @@ import { dayKey } from '../habit/dailyStats'
 import { useAllHabitData } from '../habit/useThreadTakes'
 import { summarizeToday } from '../habit/summarize'
 import { dismissSummary, useSummaryDismissed } from '../habit/summaryDismiss'
+import { FLAT_JITTER_MS } from '../habit/verdict'
 import {
   clearNextChallenge,
   draftChallengeFromTake,
@@ -119,7 +120,8 @@ function resultWord(s: ReturnType<typeof judgeChallenge>): string {
     case 'fulfilled':
       return s.valueMs !== undefined ? `達成(${s.valueMs}ms)` : '達成'
     case 'missed':
-      return `${s.valueMs}ms(+${s.overBy}ms)`
+      // 診断画面の NextChallengeStatus と同じ言い方にそろえる(横ばいの範囲なら「惜しい」、それ以上は数字だけ)
+      return s.overBy < FLAT_JITTER_MS ? `惜しい(+${s.overBy}ms)` : `${s.valueMs}ms(+${s.overBy}ms)`
     case 'unjudged':
       return '判定なし'
     default:

@@ -1,5 +1,5 @@
 import type { Thread, Take, DiagnosisResult } from '../db'
-import { startOfDay, daysSince, isHabitTake, warmthLevel } from './dailyStats'
+import { startOfDay, startOfNextDay, daysSince, isHabitTake, warmthLevel } from './dailyStats'
 
 // 「今日の一本」の候補選定(C01)。React にも Dexie にも依存しない純関数。
 //
@@ -118,6 +118,9 @@ const REASON_RANK: Record<HeroReason, number> = { challenge: 0, oneMore: 1, setb
 export function pickToday(args: PickTodayArgs): HeroState {
   const now = args.now ?? Date.now()
   const today0 = startOfDay(now)
+  // 「今日」は [today0, tomorrow0)。dailyStats.todaysHabitTakes と同じ境界(翌日 0:00 は setDate で出す)
+  const tomorrow0 = startOfNextDay(now)
+  const isToday = (ts: number) => ts >= today0 && ts < tomorrow0
   const active = args.threads.filter((t) => t.type === 'phrase' && t.status === 'active')
   if (active.length === 0) return { kind: 'empty' }
 
@@ -138,7 +141,7 @@ export function pickToday(args: PickTodayArgs): HeroState {
     const latest = withNotes[withNotes.length - 1] ?? normals[normals.length - 1]
     const habits = normals.filter(isHabitTake)
     const lastHabit = habits[habits.length - 1]
-    const todayTakes = habits.filter((t) => t.recordedAt >= today0)
+    const todayTakes = habits.filter((t) => isToday(t.recordedAt))
     const doneToday = todayTakes.length > 0
     // 「何日ぶり」は演奏の記録(habit テイク)基準。無ければスレッドの最終更新で代える
     const lastTs = lastHabit?.recordedAt ?? latest?.recordedAt ?? thread.lastActivityAt
@@ -193,7 +196,7 @@ export function pickToday(args: PickTodayArgs): HeroState {
 
   if (cleaned.every((p) => p.doneToday)) {
     // 「今日の分」はスレッドを問わず、今日録った habit テイクの総数
-    const todayCount = args.takesAsc.filter((t) => isHabitTake(t) && t.recordedAt >= today0).length
+    const todayCount = args.takesAsc.filter((t) => isHabitTake(t) && isToday(t.recordedAt)).length
     return { kind: 'allDone', picks: cleaned, todayCount }
   }
   return { kind: 'pick', picks: cleaned }

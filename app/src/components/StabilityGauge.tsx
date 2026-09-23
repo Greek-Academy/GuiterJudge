@@ -4,10 +4,28 @@ import { useStabilityGauge } from '../habit/useStabilityGauge'
 // 安定ゲージ: 「直前のテイクと同じように弾けた回数」を 5 目盛りで見せる。
 // 満タンでも自動で解決済みにはしない(解決は人が決める)。統合側が解決ボタンの昇格に habit/useStabilityGauge を使う。
 
-type Props = { threadId: string; compact?: boolean } // compact = 一覧カード用(高さ 6px、ラベル無し)
+type Props = {
+  threadId: string
+  compact?: boolean // compact = 一覧カード用(高さ 6px、ラベル無し)
+  /**
+   * 親が計算済みのゲージ。渡すとこのコンポーネントは Dexie を購読しない。
+   * 一覧(ThreadList)は全スレッドのテイクを 1 度だけ購読しているので、カードごとに liveQuery を張らずにここで渡す。
+   * undefined = 親がまだ読み込み中 or 渡さない(そのときは threadId で自分で購読する)
+   */
+  gauge?: Gauge
+}
 
-export default function StabilityGauge({ threadId, compact }: Props) {
+export default function StabilityGauge({ threadId, compact, gauge }: Props) {
+  if (gauge) return <GaugeView gauge={gauge} compact={compact} />
+  return <LiveStabilityGauge threadId={threadId} compact={compact} />
+}
+
+function LiveStabilityGauge({ threadId, compact }: { threadId: string; compact?: boolean }) {
   const gauge = useStabilityGauge(threadId)
+  return <GaugeView gauge={gauge} compact={compact} />
+}
+
+function GaugeView({ gauge, compact }: { gauge: Gauge; compact?: boolean }) {
   const label = `解決候補まで ${gauge.value}/${gauge.max}`
 
   if (compact) {

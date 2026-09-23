@@ -17,6 +17,18 @@ export function startOfDay(ts: number): number {
   return d.getTime()
 }
 
+/**
+ * 任意の時刻が属するローカル日の翌日 0:00。
+ * `startOfDay(ts) + 24h` にしないのは、夏時間の切り替え日は 1 日が 23 / 25 時間で、
+ * 足し算だと翌日 0:00 から 1 時間ずれる(前日の 23 時台を「今日」に入れたり、今日の 23 時台を落としたりする)から。
+ * pickToday / nextChallenge の「日」の境界もこれに揃える
+ */
+export function startOfNextDay(ts: number): number {
+  const d = new Date(startOfDay(ts))
+  d.setDate(d.getDate() + 1)
+  return d.getTime()
+}
+
 /** 'YYYY-MM-DD'(ローカル)。localStorage のキーや「同じ日か」の比較に使う */
 export function dayKey(ts: number): string {
   const d = new Date(ts)
@@ -47,7 +59,7 @@ export function isHabitTake(t: Take): boolean {
 /** 今日(ローカル)録った habit テイク。渡された順序を保つ */
 export function todaysHabitTakes(takes: Take[], now = Date.now()): Take[] {
   const from = startOfDay(now)
-  const to = from + DAY_MS
+  const to = startOfNextDay(now)
   return takes.filter((t) => isHabitTake(t) && t.recordedAt >= from && t.recordedAt < to)
 }
 

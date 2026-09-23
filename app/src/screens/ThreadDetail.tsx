@@ -166,15 +166,26 @@ export default function ThreadDetail({ threadId, onBack, onOpenDiagnosis, autoRe
   // autoRecord で開いたとき、メトロノーム設定の読み込みを待ってから 1 度だけ録音を始める。
   // 初回はマイク許可ダイアログが出るので「開いたら勝手に録音」に見せない。許可済みのときだけ自動で始め、
   // 未許可・非対応の端末では従来どおりボタンを押してもらう(案内を 1 行出す)
+  // 許可の問い合わせ(await)中に画面を離れたら録音を始めない(離れた画面の裏でマイクが開くのを防ぐ)。
+  // cleanup で cancelled を立て、まだ始めていなければ autoStarted も戻す。StrictMode(開発時)の
+  // マウント → 即アンマウント → 再マウントでも、2 回目の effect で改めて 1 度だけ始められるようにするため
   const autoStarted = useRef(false)
   useEffect(() => {
     if (!autoRecord || !metroLoaded || autoStarted.current || isRecording || busy) return
     autoStarted.current = true
+    let cancelled = false
+    let started = false
     void (async () => {
       const granted = await micPermissionGranted()
+      if (cancelled) return
+      started = true
       if (granted) await handleRecordToggle()
       else setNotice({ kind: 'success', text: '「● 録音する」を押すと始まります(初回はマイクの許可が必要です)' })
     })()
+    return () => {
+      cancelled = true
+      if (!started) autoStarted.current = false
+    }
     // handleRecordToggle / isRecording / busy は毎描画で変わるが、autoStarted で 1 回に絞っているので依存に入れない
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoRecord, metroLoaded])

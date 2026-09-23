@@ -205,9 +205,25 @@ button:disabled { opacity: 0.5; cursor: default; }
 /* スマホ枠の高さを画面に合わせ、各画面の 2 段目(overflowY: auto の div)を実際のスクロール領域にする。
    診断画面の「もう 1 回」バー(.again-bar、position: sticky)が下端に貼り付くにはこれが必要。
    以前は .phone が中身の高さまで伸びて body がスクロールしていたため、sticky が効かなかった */
-.phone { max-height: calc(100vh - 48px); }
+/* iOS Safari の 100vh は「アドレスバーが縮んだとき」の高さなので、バーが出ている間は下端がはみ出して
+   .again-bar が画面外に隠れる。見えている高さの 100dvh を優先し、非対応ブラウザ向けに 100vh を先に書いて残す */
+.phone { max-height: calc(100vh - 48px); max-height: calc(100dvh - 48px); }
 .topbar { flex: none; }
 .phone > :not(.topbar) { flex: 1 1 auto; min-height: 0; }
+/* スマホ幅では端末の画面そのものが枠なので、スマホ枠(角丸・余白・枠線)を外して全画面にする。
+   高さは固定(height)にして、中身が少ない画面でも .again-bar などの下端要素が画面下に来るようにする */
+@media (max-width: 480px) {
+  .phone {
+    width: 100%;
+    margin: 0;
+    border: none;
+    border-radius: 0;
+    min-height: 0;
+    height: 100vh;
+    height: 100dvh;
+    max-height: none;
+  }
+}
 
 /* --- WP-A: 対戦カード・安定ゲージ・もう 1 回バー --- */
 /* 対戦カード(診断画面の最上部) */

@@ -9,8 +9,7 @@ import TodayHero from '../components/TodayHero'
 import StabilityGauge from '../components/StabilityGauge'
 import ThreadCardMeta from '../components/ThreadCardMeta'
 import { useAllHabitData } from '../habit/useThreadTakes'
-import { useStabilityGauge } from '../habit/useStabilityGauge'
-import { latestOutcomeByThread, stabilityGauge } from '../habit/verdict'
+import { GAUGE_MAX, latestOutcomeByThread, stabilityGauge, type Gauge } from '../habit/verdict'
 import { pickToday, warmthClass } from '../habit/pickToday'
 import { isChallengeDueToday, useNextChallenge } from '../habit/nextChallenge'
 
@@ -23,6 +22,9 @@ type Props = {
 }
 
 type Notice = { kind: 'success' | 'error'; text: string }
+
+/** 読み込み中のゲージ。compact 表示は available: false なら何も描かない(以前の useStabilityGauge の読み込み中と同じ) */
+const PENDING_GAUGE: Gauge = { value: 0, max: GAUGE_MAX, available: false, basis: 'none' }
 
 /** 新規スレッド作成の入力欄。window.promptだとプロジェクタにOS標準ダイアログが割り込むため画面内に置く */
 type Composing = null | { type: 'phrase' | 'songThrough' }
@@ -74,19 +76,34 @@ export default function ThreadList({ onOpenThread, onRecordNow, onOpenSongThroug
   // useAllHabitData は毎描画で新しいオブジェクトを返すので、useMemo の依存には中身の 3 つを個別に入れる
   const { threads: habitThreads, takesAsc: habitTakesAsc, prevDiagByTake: habitPrevDiagByTake } = useAllHabitData()
   const challenge = useNextChallenge()
-  const heroState = useMemo(() => {
+  // アクティブなフレーズスレッドの安定ゲージ。hero の候補選定・hero 内のゲージ・一覧カードのゲージが同じ値を使う。
+  // 以前はカードごとに StabilityGauge が useStabilityGauge(liveQuery 2 本)を張っていたが、
+  // 材料は上の useAllHabitData と同じなので、ここで 1 度だけ計算して props で渡す(値は同じ stabilityGauge 関数)
+  const gaugeByThread = useMemo(() => {
     const [threads, takesAsc, prevDiagByTake] = [habitThreads, habitTakesAsc, habitPrevDiagByTake]
     if (!threads || !takesAsc || !prevDiagByTake) return undefined
-    const outcomeByThread = latestOutcomeByThread(takesAsc, prevDiagByTake)
-    const gaugeByThread = new Map<string, number>()
+    const byThread = new Map<string, typeof takesAsc>()
+    for (const x of takesAsc) {
+      const list = byThread.get(x.threadId)
+      if (list) list.push(x)
+      else byThread.set(x.threadId, [x])
+    }
+    const m = new Map<string, Gauge>()
     for (const t of threads) {
       if (t.type !== 'phrase' || t.status !== 'active') continue
-      const g = stabilityGauge(takesAsc.filter((x) => x.threadId === t.id), prevDiagByTake)
-      if (g.available) gaugeByThread.set(t.id, g.value)
+      m.set(t.id, stabilityGauge(byThread.get(t.id) ?? [], prevDiagByTake))
     }
+    return m
+  }, [habitThreads, habitTakesAsc, habitPrevDiagByTake])
+  const heroState = useMemo(() => {
+    const [threads, takesAsc, prevDiagByTake] = [habitThreads, habitTakesAsc, habitPrevDiagByTake]
+    if (!threads || !takesAsc || !prevDiagByTake || !gaugeByThread) return undefined
+    const outcomeByThread = latestOutcomeByThread(takesAsc, prevDiagByTake)
+    const gaugeValueByThread = new Map<string, number>()
+    for (const [id, g] of gaugeByThread) if (g.available) gaugeValueByThread.set(id, g.value)
     const due = challenge && isChallengeDueToday(challenge) ? challenge : null
-    return pickToday({ threads, takesAsc, outcomeByThread, gaugeByThread, challenge: due, prevDiagByTake })
-  }, [habitThreads, habitTakesAsc, habitPrevDiagByTake, challenge])
+    return pickToday({ threads, takesAsc, outcomeByThread, gaugeByThread: gaugeValueByThread, challenge: due, prevDiagByTake })
+  }, [habitThreads, habitTakesAsc, habitPrevDiagByTake, gaugeByThread, challenge])
   // 一覧カードの「N テイク」。音符起こしに成功した normal テイクの数(ゲージや hero と同じ母集団)
   const takeCountByThread = useMemo(() => {
     const m = new Map<string, number>()
@@ -170,7 +187,7 @@ export default function ThreadList({ onOpenThread, onRecordNow, onOpenSongThroug
           onRecordNow={onRecordNow}
           onOpenThread={onOpenThread}
           onCompose={() => beginCompose('phrase')}
-          renderGauge={(id) => <HeroGauge threadId={id} />}
+          renderGauge={(id) => <HeroGauge threadId={id} gauge={gaugeByThread?.get(id)} />}
         />
 
         <div className="section-title">アクティブなスレッド</div>
@@ -178,7 +195,7 @@ export default function ThreadList({ onOpenThread, onRecordNow, onOpenSongThroug
           <div className={`card ${warmthClass(t.lastActivityAt)}`} key={t.id} onClick={() => onOpenThread(t.id)}>
             <div className="row">
               <div className="title">{t.title}</div>
-              <StabilityGauge threadId={t.id} compact />
+              <StabilityGauge threadId={t.id} gauge={gaugeByThread?.get(t.id) ?? PENDING_GAUGE} compact />
               {latestBadges?.has(t.id) && <div className="badge">{latestBadges.get(t.id)}</div>}
             </div>
             <ThreadCardMeta thread={t} takeCount={takeCountByThread.get(t.id) ?? 0} />
@@ -335,13 +352,12 @@ export default function ThreadList({ onOpenThread, onRecordNow, onOpenSongThroug
 }
 
 /** hero の中の「解決候補まで ●●●○○ 3/5」。判定できないスレッドでは何も描かない(親の .gauge-line:empty が行ごと消す) */
-function HeroGauge({ threadId }: { threadId: string }) {
-  const gauge = useStabilityGauge(threadId)
-  if (!gauge.available) return null
+function HeroGauge({ threadId, gauge }: { threadId: string; gauge: Gauge | undefined }) {
+  if (!gauge?.available) return null
   return (
     <>
       <span>解決候補まで</span>
-      <StabilityGauge threadId={threadId} compact />
+      <StabilityGauge threadId={threadId} gauge={gauge} compact />
       <span className="n">
         {gauge.value}/{gauge.max}
       </span>
