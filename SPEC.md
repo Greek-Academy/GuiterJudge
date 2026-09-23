@@ -28,7 +28,9 @@ PRD は「何を作るか」、Design Doc は「どう作るか（検討過程�
 **基本方針**
 
 - 完全クライアントサイド。バックエンド・アカウント・ネットワーク送信は一切ない
-- 外部の「正解データ」（曲DB・タブ譜・コード進行）に依存しない
+- 外部の「正解データ」（曲DB・タブ譜・コード進行）に依存しない。唯一の例外は**利用者が自分で持ち込む楽譜ファイル（MusicXML / .mxl）**を
+  お手本にする入口（Design Doc Appendix C 入口D、2026-09-23）で、講師録音（B）と同格の「利用者が選んだ参照」として扱う。
+  曲 DB の参照・楽譜の自動取得・コード名の自動判定はしない
 - スコアは**正しさではなく一貫性**の指標。この限界を UI 文言・自己確認ステップ・お手本モードで補う
 
 ---
@@ -44,6 +46,7 @@ PRD は「何を作るか」、Design Doc は「どう作るか（検討過程�
 | 和音（ストローク）の**コード進行** | 「和音の練習」を ON にしたスレッド。メジャー/マイナー/7th/m7 のコード名と切り替え時刻を取る（音符単位ではない）。実録音（GuitarSet）でストローク系はルート 84〜93%、ジャズ・ファンク系は 51〜64%（5.6 節） |
 | 音域 | MIDI **40（E2）〜 88（E6）**。範囲外の検出は破棄する。下限はスレッドの「最低音」設定（`Thread.tuningLowest`、ドロップ D = 38 など）で下げられる |
 | 入力 | マイク録音 / 音声ファイル / 動画ファイル（音声トラックのみ抽出） |
+| お手本の楽譜 | MusicXML（`.musicxml` / `.xml`）と圧縮 MusicXML（`.mxl`）。score-partwise のみ。小節範囲・BPM を指定して音符列をそのままお手本にする（Basic Pitch は通さない）。PDF は MuseScore 4 / Soundslice で MusicXML にしてから取り込む |
 
 ### 対応しない（実測により判明）
 
@@ -54,6 +57,9 @@ PRD は「何を作るか」、Design Doc は「どう作るか（検討過程�
 | リアルタイム（演奏中）フィードバック | 録音 → 事後比較のみ |
 | カポ | 音域フィルタの上限は標準チューニング固定（カポで上限が上がることは実用上ない）。変則調弦の**下限**はスレッド設定で対応（2026-09-23） |
 | マルチデバイス同期 | v1 Non-goal |
+| 楽譜 PDF / 画像の読み取り（OMR） | Design Doc Appendix A のとおり不採用。MusicXML に書き出してから取り込む |
+| Guitar Pro（`.gp*`）・MIDI・score-timewise の MusicXML | パーサ未対応。MuseScore 4 で `.mxl` に書き出せば取り込める |
+| 楽譜の D.C. / D.S. / Coda・`<measure-repeat>` | 展開しない（楽譜順のまま。取り込み時に警告を出す） |
 
 ---
 
@@ -88,6 +94,9 @@ M1 検証で Basic Pitch が実用に足ると判断したため、現状のコ�
 | `src/actions.ts` | ユースケース層（スレッド作成、録音→診断、比較モード再計算、お手本操作、解決） |
 | `src/backup.ts` | エクスポート／インポート、`navigator.storage.persist()` |
 | `src/preview.ts` | `NoteEvent[]` のプレビュー再生（Web Audio の発振器） |
+| `src/synth.ts` | Karplus-Strong の撥弦音合成と WAV 書き出し（デモ投入と、楽譜から作るお手本の音源） |
+| `src/score/*` | 楽譜ファイル（MusicXML / .mxl）→ `NoteEvent[]`。依存ゼロ（`DOMParser` + `DecompressionStream`）。詳細は `src/score/README.md` |
+| `src/components/ScoreImportPanel.tsx` | 楽譜からお手本を作る取り込みパネル（小節範囲・BPM・反復展開・装飾音・試聴） |
 | `src/pitchNames.ts` | 音名 ⇄ MIDI 番号の相互変換（検証画面の期待値入力用） |
 | `src/screens/*.tsx` | 5画面 |
 | `src/components/PianoRoll.tsx` | ピアノロール描画 |
@@ -122,12 +131,18 @@ Take {
   id, threadId,
   role: 'normal' | 'reference',        // reference はスレッドにつき最大1件
   audioBlob: Blob,
-  sourceType: 'recorded' | 'importedAudio' | 'importedVideo' | 'demo',
+  sourceType: 'recorded' | 'importedAudio' | 'importedVideo' | 'demo' | 'importedScore',
   recordedAt, durationMs,
-  noteEvents?: NoteEvent[],
-  analysisOffsetMs?: number,           // 前処理で先頭から捨てた ms
+  noteEvents?: NoteEvent[],            // importedScore では楽譜の音符列そのもの（Basic Pitch を通さない）
+  analysisOffsetMs?: number,           // 前処理で先頭から捨てた ms（importedScore は 0）
   metronome?, gridTiming?, suppressedHarmonicCount?,
-  chordEvents?: ChordEvent[]           // 和音認識。noteEvents と同じ時間軸。実装前のテイクには無い
+  chordEvents?: ChordEvent[]           // 和音認識。noteEvents と同じ時間軸。実装前のテイクには無い。importedScore には付けない
+  scoreImport?: {                      // importedScore のお手本だけ。取り込み条件の記録
+    fileName, title?, software?,
+    tempoBpm, tempoSource: 'score' | 'default' | 'override',
+    measureFrom?, measureTo?,          // 楽譜の小節番号（文字列）。全体なら無し
+    chosenParts: string[], warnings: string[], notes: number
+  }
 }
 
 NoteEvent { pitch, startMs, durationMs, velocity? }
@@ -159,6 +174,7 @@ SongThroughCompletion { id, threadId, at, durationMs, note? }
 | フォールバック用フィールドを持たない | `isPolyphonic` / `pitchContour` / `chromaSequence` は未実装のため定義していない |
 | `rmsEnvelope` を永続化していない | 前処理の戻り値としては算出しているが `Take` には保存していない |
 | `sourceType: 'demo'` を追加 | 合成音由来のテイクを人間の演奏と区別するため |
+| `sourceType: 'importedScore'` と `scoreImport` を追加（2026-09-23） | 楽譜ファイル由来のお手本（Appendix C 入口D）。`audioBlob` は楽譜の音符列を撥弦音で合成した WAV（再生・バックアップ・和音認識の再解析の経路をそのまま使うため）。非インデックス列なので Dexie の version は上げていない |
 | `sourceType: 'correctedFromTake'` は未実装 | 音符編集 UI（Appendix C 案A）が未着手のため |
 | `resolvedSelfCheck` を永続化 | Design Doc は「保存不要」としていたが、後から見返せるよう `DiagnosisResult` に残している |
 | `confidence` フィールドなし | 和音を対象外にしたため、和音スレッドの参考値バッジ自体が不要になった |
@@ -383,13 +399,13 @@ BPM か最小音価が演奏と合っていないので UI で警告する。
 - 「和音（ストローク）の練習」トグル。ON にすると和音認識の結果が無い過去テイクを保存音声から埋め、
   保存済み診断にコード比較の集計値を足す。テイク履歴にコード進行（`G → C → D → G`）と「コード一致 %」バッジが出る
 - スコア推移グラフ（診断結果のあるテイクのみ、時系列昇順）
-- お手本の設定：既存テイクから昇格、またはファイル取り込み。設定中は解除も可能
+- お手本の設定：既存テイクから昇格、音声／動画ファイル取り込み、または楽譜ファイル（MusicXML / .mxl）から作成（インラインの取り込みパネル、7 節）。設定中は解除も可能。お手本行には由来（楽譜なら「楽譜: 曲名、第 N〜M 小節、♩=BPM」）を出す
 - テイク履歴（新しい順、安定度バッジ・デモバッジ付き）。各テイクから診断画面へ
 - 「解決済みにする」→ **自己確認ステップ**「この演奏、実際に合っていると感じますか？」（はい／いいえ／わからない）
 
 ### 6.3 診断結果（`DiagnosisView`）
 
-- 比較モード切替（prev / best / reference）とモードごとの意味の説明文
+- 比較モード切替（prev / best / reference）とモードごとの意味の説明文（お手本が楽譜由来なら「格子からのずれ／指定 BPM との差」の説明に切り替える）
 - 自分のテイク／比較対象のプレビュー再生
 - メトロノーム録音なら上部に「拍に対する安定度」（ばらつき ms を大きく、テンポの流れ・格子の一致度・解析音数）。
   一致度が低ければ設定ミスの警告
@@ -426,21 +442,31 @@ M1 検証および閾値チューニング用。アプリ本体と同じコー�
 
 ## 7. お手本テイク
 
-Design Doc Appendix C の「3つの入口」のうち、**B と C を実装済み、A は未実装**。
+Design Doc Appendix C の入口のうち、**B・C・D を実装済み、A は未実装**。
 
 | 案 | 内容 | 状態 |
 |---|---|---|
 | A | テイクの音符起こし結果をユーザーが修正して正解にする | **未実装** |
 | B | 講師等の録音（音声／動画ファイル）を取り込む | 実装済み |
 | C | 自分の過去テイクを昇格させる | 実装済み（`role` を切り替えるだけ） |
+| D | 利用者が持ち込む楽譜ファイル（MusicXML / .mxl）から作る | 実装済み（2026-09-23、`setReferenceTakeFromScore`） |
 
 スレッドにつきお手本は1件。既存のお手本があれば置き換え前に降格させる。
-**降格時の扱いは由来で分ける**：取り込みファイル由来（B）は元々テイク履歴に無かったものなので削除し、
+**降格時の扱いは由来で分ける**：取り込みファイル由来（B）・楽譜由来（D）は元々テイク履歴に無かったものなので削除し、
 自分の過去テイク由来（C）は演奏の記録そのものが失われるため通常テイクに戻すだけにする。
 
 動画取り込みは `<video>` + `createMediaElementSource` + `MediaRecorder` で音声トラックを実時間抽出する
 （ffmpeg.wasm 等は PWA の軽量さを損なうため使わない）。抽出後は音声のみを保存し、元動画は保持しない。
 ブラウザが再生できないコーデックの場合は失敗し、音声ファイルでの取り込みを促す。
+
+**楽譜（D）**：スレッド詳細の「お手本（任意）」節の「楽譜ファイルから（.musicxml / .mxl）」でファイルを選ぶと、同じ節にインラインの取り込みパネルが開く。
+要約（曲名・書き出しソフト・採用パート・小節数・音数・和音率・音域・楽譜テンポ）と警告（`warn` は常に表示、`info` と速い音・和音の多さは折りたたみ）を見ながら、
+小節範囲（既定: 全体。16 小節を超えると「数小節に絞ると比較が安定」の注記）、BPM（既定: スレッドのメトロノーム → 楽譜テンポ。楽譜にテンポが無ければ入力必須。
+楽譜テンポと 2.5 倍以上違えば注意文。比較側のテンポ事前正規化の上限が 2.5 倍のため）、反復展開・装飾音の ON/OFF を選び、▶ 試聴してから「お手本にする」。
+`noteEvents` は楽譜の音符列そのもの、`audioBlob` は `synthesizeTake()` の合成音、`analysisOffsetMs = 0`、`chordEvents` は付けない。
+楽譜にスレッドの最低音（既定 E2）より低い音があれば、`Thread.tuningLowest` を楽譜の最低音（E♭2 / D2 / C♯2 / C2 / B1 の刻み）に下げ、通知で知らせる
+（下げないと以後の録音で低い音が音域フィルタに捨てられ、お手本と合わなくなる）。
+お手本が楽譜由来のとき、診断画面の説明文は「ばらつき = 指定テンポの格子からのずれ、テンポ差 = 指定 BPM との差」に切り替わる（数値の定義は同じ）。
 
 ---
 
