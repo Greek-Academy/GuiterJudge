@@ -187,6 +187,8 @@ export const GUITAR_LOW = 40
 export const GUITAR_HIGH = 88
 const FAST_NOTE_MS = 300
 const CHORD_HEAVY_RATIO = 0.3
+/** スレッドの「最低音」で選べる一番低い音(B1、actions.ts の TUNING_LOWEST_STEPS の末尾) */
+const TUNING_LOWEST_FLOOR = 35
 /** 音高クラスだけで重複と判定するのに必要な最小音数(音数が極少の単位での誤判定を抑える) */
 const MIN_NOTES_FOR_OCTAVE_DEDUP = 4
 
@@ -1101,13 +1103,20 @@ function finalize(timeline: ScoreTimeline, parts: ScorePart[], parseWarnings: Sc
   if (!notes.length) warnings.push({ code: 'empty', level: 'warn', message: '音符が 1 つもありません' })
   if (source === 'default')
     warnings.push({ code: 'no-tempo', level: 'warn', message: `楽譜にテンポ記号が無いため ${render.fallbackBpm} BPM として展開しました。演奏する BPM を指定してください` })
-  if (below)
+  if (below) {
+    // スレッドの「最低音」の刻み(actions.ts の TUNING_LOWEST_STEPS = E♭2〜B1 の半音刻み)に丸めた値。
+    // お手本にすると setReferenceTakeFromScore がこの値までスレッドの最低音を下げる
+    const lowered = Math.max(TUNING_LOWEST_FLOOR, lo)
     warnings.push({
       code: 'variant-tuning',
       level: 'warn',
-      message: `${below} 音がギターの最低音 E2 より低い音(最低 ${pitchToName(lo)})です。ドロップ D などの変則調弦の楽譜と思われます。音は残していますが、採譜側は E2 未満を拾いません`,
+      message:
+        `${below} 音が標準調弦の最低音 E2 より低い音(最低 ${pitchToName(lo)})です。ドロップ D などの変則調弦の楽譜と思われます。` +
+        `取り込むとこのスレッドの最低音を ${pitchToName(lowered)} に下げ、以後の録音でもこの音を拾うようにします` +
+        (lo < TUNING_LOWEST_FLOOR ? `(${pitchToName(TUNING_LOWEST_FLOOR)} より低い音は拾えません)` : ''),
       count: below,
     })
+  }
   if (above)
     warnings.push({ code: 'above-range', level: 'warn', message: `${above} 音がギターの診断音域(〜E6)より高い音(最高 ${pitchToName(hi)})です`, count: above })
   if (notes.length >= 8 && stats.chordRatio >= CHORD_HEAVY_RATIO)

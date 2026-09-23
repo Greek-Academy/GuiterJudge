@@ -366,3 +366,8 @@ button:disabled { opacity: 0.5; cursor: default; }
 .score-info { font-size: 11px; color: var(--text-muted); line-height: 1.5; }
 .score-info summary { cursor: pointer; }
 .score-info ul { margin: 4px 0 0; padding-left: 18px; }
+.score-hint { font-size: 11px; color: var(--text-muted); line-height: 1.5; margin-top: -4px; }
+/* 「お手本にする」が押せない理由。警告ではないので枠線は付けず、文字だけ少し強める */
+.score-why { font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
+/* 画面には出さず読み上げにだけ使うラベル */
+.score-sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }

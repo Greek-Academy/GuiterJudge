@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { Thread } from '../db'
 import { convertMusicXml, sliceMeasures, retime, type ParsedScore, type ScoreConversion } from '../score'
 import { setReferenceTakeFromScore, tuningLowestForScore, type ScoreReferenceResult } from '../actions'
 import { playNoteEvents } from '../preview'
+import { synthesizeTake } from '../synth'
 import { pitchToName } from '../pitchNames'
 
 // 楽譜ファイル(MusicXML / .mxl)からお手本を作る取り込みパネル(DesignDoc Appendix C 入口D)。
@@ -17,6 +18,14 @@ const BPM_MIN = 20
 const BPM_MAX = 300
 /** 大半の楽譜で出るので、info 扱いで畳んでおく警告 */
 const QUIET_CODES = new Set(['fast-notes', 'chord-heavy'])
+/**
+ * 試聴は保存されるのと同じ合成音(synthesizeTake の WAV)で鳴らす。合成は同期処理で、
+ * デスクトップで 256 秒分 60 ms 程度だがスマホでは数倍かかるので、これより長い範囲は発振器の簡易プレビューにする
+ */
+const SYNTH_PREVIEW_MAX_MS = 180_000
+
+/** synth = 合成中、audio = 合成音を再生中(止められる)、osc = 発振器の簡易プレビュー中(止められない) */
+type PreviewState = 'idle' | 'synth' | 'audio' | 'osc'
 
 type Props = {
   thread: Thread
@@ -30,6 +39,11 @@ function measureLabel(m: { number: string; pass: number }): string {
   return `第 ${m.number} 小節${m.pass > 1 ? `(${m.pass} 回目)` : ''}`
 }
 
+/** 上限をわずかに超えた倍率(2.51 など)を「2.5 倍」と出すと上限と同じに見えるので、そのときだけ小数 2 桁にする */
+function fmtRatio(r: number): string {
+  return r.toFixed(1) === TEMPO_RATIO_LIMIT.toFixed(1) ? r.toFixed(2) : r.toFixed(1)
+}
+
 function fmtBpm(v: number): string {
   return Number.isInteger(v) ? String(v) : v.toFixed(1)
 }
@@ -38,7 +52,18 @@ export default function ScoreImportPanel({ thread, parsed, onDone, onCancel, onE
   const [expandRepeats, setExpandRepeats] = useState(true)
   const [keepGrace, setKeepGrace] = useState(true)
   const [busy, setBusy] = useState(false)
-  const [playing, setPlaying] = useState(false)
+  const [preview, setPreview] = useState<PreviewState>('idle')
+  // 合成した WAV の再生。範囲・BPM が変わらなければ合成し直さない
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+  const synthCache = useRef<{ notes: ScoreConversion['notes']; url: string } | null>(null)
+  const ids = useId()
+  useEffect(
+    () => () => {
+      audioRef.current?.pause()
+      if (synthCache.current) URL.revokeObjectURL(synthCache.current.url)
+    },
+    [],
+  )
 
   // 楽譜テンポで一度展開したもの。小節一覧・楽譜テンポ・no-tempo の判定はこれを見る
   const base = useMemo<{ conv: ScoreConversion | null; error: string | null }>(() => {
@@ -100,16 +125,64 @@ export default function ScoreImportPanel({ thread, parsed, onDone, onCancel, onE
   const lowest = selStats.pitchRange?.[0]
   const currentLowest = thread.tuningLowest ?? 40
   const willLowerTo = lowest !== undefined && lowest < currentLowest ? tuningLowestForScore(lowest) : undefined
+  // variant-tuning の文面は「取り込むと最低音を下げます」。スレッドがすでにそこまで下がっていれば当てはまらないので、
+  // 警告から外して「そのまま取り込む」旨だけを info 側に出す
+  const tuningAlreadyLow = lowest !== undefined && lowest < 40 && willLowerTo === undefined
+  const warnShown = tuningAlreadyLow ? warnList.filter((w) => w.code !== 'variant-tuning') : warnList
   const chosenParts = conv0.parts.filter((p) => p.chosen).map((p) => p.partName || p.key)
   const canSubmit = !busy && bpmValid && final.notes.length > 0
+  const useSynthPreview = selStats.durationMs <= SYNTH_PREVIEW_MAX_MS
+  // ボタンが押せない理由(画面に出し、aria-describedby でボタンにも結び付ける)
+  const blockReason = busy
+    ? null
+    : final.notes.length === 0
+      ? '選んだ範囲に音符が無いので、試聴もお手本にもできません。範囲を広げてください。'
+      : !bpmValid
+        ? bpmText.trim() === ''
+          ? '弾く BPM を入れると「お手本にする」を押せます。'
+          : `BPM を ${BPM_MIN}〜${BPM_MAX} で入れると「お手本にする」を押せます。`
+        : null
+
+  function stopPreview() {
+    audioRef.current?.pause()
+    audioRef.current = null
+    setPreview('idle')
+  }
 
   async function handlePreview() {
-    if (!final || playing) return
-    setPlaying(true)
+    if (!final) return
+    if (preview === 'audio') return stopPreview()
+    if (preview !== 'idle') return
+    if (!useSynthPreview) {
+      setPreview('osc')
+      try {
+        await playNoteEvents(final.notes, { raw: true })
+      } finally {
+        setPreview('idle')
+      }
+      return
+    }
     try {
-      await playNoteEvents(final.notes)
-    } finally {
-      setPlaying(false)
+      let url = synthCache.current?.notes === final.notes ? synthCache.current.url : null
+      if (!url) {
+        setPreview('synth')
+        // 「合成中…」を描画させてから同期の合成に入る
+        await new Promise((r) => setTimeout(r, 30))
+        const blob = synthesizeTake(final.notes)
+        if (synthCache.current) URL.revokeObjectURL(synthCache.current.url)
+        url = URL.createObjectURL(blob)
+        synthCache.current = { notes: final.notes, url }
+      }
+      const audio = new Audio(url)
+      audioRef.current = audio
+      audio.onended = () => {
+        if (audioRef.current === audio) stopPreview()
+      }
+      setPreview('audio')
+      await audio.play()
+    } catch (e) {
+      stopPreview()
+      onError('試聴を再生できませんでした: ' + (e as Error).message)
     }
   }
 
@@ -170,17 +243,23 @@ export default function ScoreImportPanel({ thread, parsed, onDone, onCancel, onE
         </div>
       </div>
 
-      {warnList.length > 0 && (
-        <ul className="score-warn">
-          {warnList.map((w) => (
+      {warnShown.length > 0 && (
+        <ul className="score-warn" aria-label="取り込みの注意">
+          {warnShown.map((w) => (
             <li key={w.code}>{w.message}</li>
           ))}
         </ul>
       )}
-      {infoList.length > 0 && (
+      {(infoList.length > 0 || tuningAlreadyLow) && (
         <details className="score-info">
-          <summary>ほかの注意({infoList.length})</summary>
+          <summary>ほかの注意({infoList.length + (tuningAlreadyLow ? 1 : 0)})</summary>
           <ul>
+            {tuningAlreadyLow && (
+              <li>
+                標準調弦より低い音(最低 {pitchToName(lowest!)})がありますが、このスレッドの最低音はすでに {pitchToName(currentLowest)}{' '}
+                なのでそのまま取り込みます。
+              </li>
+            )}
             {infoList.map((w) => (
               <li key={w.code}>{w.message}</li>
             ))}
@@ -188,17 +267,19 @@ export default function ScoreImportPanel({ thread, parsed, onDone, onCancel, onE
         </details>
       )}
 
-      <div className="row metro-row">
-        <span className="lbl">小節範囲</span>
-        <select value={from} disabled={busy} onChange={(e) => setRange([Number(e.target.value), Math.max(Number(e.target.value), to)])}>
+      <div className="row metro-row" role="group" aria-labelledby={`${ids}-range`}>
+        <span className="lbl" id={`${ids}-range`}>
+          小節範囲
+        </span>
+        <select aria-label="開始小節" value={from} disabled={busy} onChange={(e) => setRange([Number(e.target.value), Math.max(Number(e.target.value), to)])}>
           {conv0.measures.map((m, i) => (
             <option key={i} value={i}>
               {measureLabel(m)}
             </option>
           ))}
         </select>
-        <span>〜</span>
-        <select value={to} disabled={busy} onChange={(e) => setRange([Math.min(from, Number(e.target.value)), Number(e.target.value)])}>
+        <span aria-hidden="true">〜</span>
+        <select aria-label="終了小節" value={to} disabled={busy} onChange={(e) => setRange([Math.min(from, Number(e.target.value)), Number(e.target.value)])}>
           {conv0.measures.map((m, i) => (
             <option key={i} value={i} disabled={i < from}>
               {measureLabel(m)}
@@ -207,32 +288,43 @@ export default function ScoreImportPanel({ thread, parsed, onDone, onCancel, onE
         </select>
       </div>
       {selectedMeasures > LONG_RANGE_MEASURES && (
-        <div className="meta" style={{ margin: 0 }}>
+        <div className="meta" style={{ margin: 0 }} role="note">
           いま {selectedMeasures} 小節分です。練習しているフレーズの数小節に絞ると比較が安定します。
         </div>
       )}
 
       <div className="row metro-row">
-        <span className="lbl">♩=</span>
+        <label className="lbl" htmlFor={`${ids}-bpm`}>
+          <span aria-hidden="true">♩=</span>
+          <span className="score-sr">弾く BPM(四分音符)</span>
+        </label>
         <input
+          id={`${ids}-bpm`}
           type="number"
+          inputMode="decimal"
           min={BPM_MIN}
           max={BPM_MAX}
           value={bpmText}
           placeholder={noTempo ? '必須' : undefined}
+          required={noTempo}
+          aria-invalid={bpmText.trim() !== '' && !bpmValid}
+          aria-describedby={[`${ids}-bpm-hint`, bpmText.trim() !== '' && !bpmValid ? `${ids}-bpm-err` : '', tempoRatio > TEMPO_RATIO_LIMIT ? `${ids}-bpm-ratio` : '']
+            .filter(Boolean)
+            .join(' ')}
           disabled={busy}
           onChange={(e) => setBpmText(e.target.value)}
         />
-        <span className="meta" style={{ margin: 0, flex: 1 }}>
+        <span className="meta" id={`${ids}-bpm-hint`} style={{ margin: 0, flex: 1 }}>
           {noTempo ? '楽譜にテンポが無いので、弾く BPM を入れてください' : '弾く BPM(比較側でもテンポ差は補正します)'}
         </span>
       </div>
       {bpmText.trim() !== '' && !bpmValid && (
-        <div className="score-warn-line">BPM は {BPM_MIN}〜{BPM_MAX} で入れてください。</div>
+        <div className="score-warn-line" id={`${ids}-bpm-err`} role="alert">
+          BPM は {BPM_MIN}〜{BPM_MAX} で入れてください。</div>
       )}
       {tempoRatio > TEMPO_RATIO_LIMIT && (
-        <div className="score-warn-line">
-          楽譜のテンポ(♩={fmtBpm(Math.round(scoreTempo! * 10) / 10)})と {tempoRatio.toFixed(1)} 倍違います。拍の単位(2分・付点4分など)の取り違えがないか確かめてください。
+        <div className="score-warn-line" id={`${ids}-bpm-ratio`} role="status">
+          楽譜のテンポ(♩={fmtBpm(Math.round(scoreTempo! * 10) / 10)})と {fmtRatio(tempoRatio)} 倍違います。拍の単位(2分・付点4分など)の取り違えがないか確かめてください。
           比較側で補正できるテンポ差は {TEMPO_RATIO_LIMIT} 倍までです。
         </div>
       )}
@@ -246,24 +338,89 @@ export default function ScoreImportPanel({ thread, parsed, onDone, onCancel, onE
         <span style={{ flex: 1 }}>装飾音を含める{stats.graceNotes ? `(${stats.graceNotes} 音)` : ''}</span>
       </label>
 
-      {willLowerTo !== undefined && (
-        <div className="meta" style={{ margin: 0 }}>
-          標準調弦の最低音より低い音({pitchToName(lowest!)})があるので、お手本にするとこのスレッドの「最低音」を{' '}
-          {pitchToName(willLowerTo)} に下げます(以後の録音で低い音が捨てられないように)。
-        </div>
-      )}
-
       <div className="row" style={{ gap: 8 }}>
-        <button className="secondary" onClick={() => void handlePreview()} disabled={playing || final.notes.length === 0}>
-          {playing ? '再生中…' : '▶ 試聴'}
+        <button
+          className="secondary"
+          onClick={() => void handlePreview()}
+          disabled={preview === 'synth' || preview === 'osc' || final.notes.length === 0}
+          aria-describedby={`${ids}-preview-note${blockReason && final.notes.length === 0 ? ` ${ids}-why` : ''}`}
+        >
+          {preview === 'synth' ? '合成中…' : preview === 'audio' ? '■ 停止' : preview === 'osc' ? '再生中…' : '▶ 試聴'}
         </button>
-        <button className="primary" onClick={() => void handleSubmit()} disabled={!canSubmit}>
+        <button
+          className="primary"
+          onClick={() => void handleSubmit()}
+          disabled={!canSubmit}
+          aria-describedby={blockReason ? `${ids}-why` : undefined}
+        >
           {busy ? '作成中…' : 'お手本にする'}
         </button>
       </div>
+      <div className="score-hint" id={`${ids}-preview-note`}>
+        {useSynthPreview
+          ? '試聴はお手本として保存されるのと同じ合成音です。'
+          : `範囲が長い(${Math.round(SYNTH_PREVIEW_MAX_MS / 60000)} 分超)ので、試聴は簡易音で鳴らします(保存されるのは合成音)。`}
+      </div>
+      {blockReason && (
+        <div className="score-why" id={`${ids}-why`} role="status">
+          {blockReason}
+        </div>
+      )}
       <button className="secondary" onClick={onCancel} disabled={busy}>
         キャンセル
       </button>
     </div>
+  )
+}
+
+/**
+ * 保存済みのお手本音声(Take.audioBlob)を再生・停止するボタン。ThreadDetail の「お手本(任意)」行で使う。
+ * 楽譜から作ったお手本なら合成音、音声/動画ファイルから作ったお手本なら取り込んだ音声がそのまま鳴る
+ */
+export function ReferenceAudioButton({ blob, label = '▶ 再生' }: { blob: Blob; label?: string }) {
+  const [playing, setPlaying] = useState(false)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+  const urlRef = useRef<string | null>(null)
+  useEffect(
+    () => () => {
+      audioRef.current?.pause()
+      if (urlRef.current) URL.revokeObjectURL(urlRef.current)
+      urlRef.current = null
+    },
+    [blob],
+  )
+
+  function stop() {
+    audioRef.current?.pause()
+    audioRef.current = null
+    setPlaying(false)
+  }
+
+  async function toggle() {
+    if (playing) return stop()
+    if (!urlRef.current) urlRef.current = URL.createObjectURL(blob)
+    const audio = new Audio(urlRef.current)
+    audioRef.current = audio
+    audio.onended = () => {
+      if (audioRef.current === audio) stop()
+    }
+    setPlaying(true)
+    try {
+      await audio.play()
+    } catch {
+      stop()
+    }
+  }
+
+  return (
+    <button
+      className="secondary"
+      style={{ width: 'auto', padding: '4px 10px' }}
+      onClick={() => void toggle()}
+      aria-label={playing ? 'お手本の音声を止める' : 'お手本の音声を再生する'}
+      aria-pressed={playing}
+    >
+      {playing ? '■ 停止' : label}
+    </button>
   )
 }

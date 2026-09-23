@@ -14,7 +14,7 @@ import {
   type ScoreReferenceResult,
 } from '../actions'
 import { parseScoreFile, SCORE_FILE_ACCEPT, type ParsedScore, type ScoreConversion } from '../score'
-import ScoreImportPanel from '../components/ScoreImportPanel'
+import ScoreImportPanel, { ReferenceAudioButton } from '../components/ScoreImportPanel'
 import { playNoteEvents } from '../preview'
 import { formatProgression } from '../chordRecognition'
 import type { BeatInfo } from '../metronome'
@@ -473,13 +473,18 @@ export default function ThreadDetail({ threadId, onBack, onOpenDiagnosis, autoRe
                 <div className="title">
                   お手本({referenceLabel(referenceTake)})
                 </div>
+                {/* 保存済みの音声(楽譜由来なら合成音)。音符列の簡易音は「▶ 音符」 */}
+                {referenceTake.audioBlob && referenceTake.audioBlob.size > 0 && (
+                  <ReferenceAudioButton key={referenceTake.id} blob={referenceTake.audioBlob} />
+                )}
                 {referenceTake.noteEvents && (
                   <button
                     className="secondary"
                     style={{ width: 'auto', padding: '4px 10px' }}
                     onClick={() => playNoteEvents(referenceTake.noteEvents!)}
+                    aria-label="お手本の音符列を簡易音で鳴らす"
                   >
-                    ▶ プレビュー
+                    ▶ 音符
                   </button>
                 )}
               </div>

@@ -156,6 +156,17 @@ test('ドロップ D: E2 より低い音は落とさず、variant-tuning 警告�
   assert.equal(w.count, 1)
   assert.match(w.message, /D2/)
   assert.match(w.message, /ドロップ D/)
+  assert.match(w.message, /取り込むとこのスレッドの最低音を D2 に下げ/)
+  assert.doesNotMatch(w.message, /拾いません|拾えません/)
+})
+
+test('variant-tuning: B1 より低い音は最低音を B1 までしか下げられないことも添える', () => {
+  const conv = convert(SCORE([{ id: 'P1', measures: [MEASURE(1, [ATTRS({ time: [4, 4], clefs: ['F'] }), TEMPO(120), N('A', 1, 8), N('E', 2, 8)])] }]))
+  const w = conv.warnings.find((w) => w.code === 'variant-tuning')
+  assert.ok(w)
+  assert.match(w.message, /最低 A1/)
+  assert.match(w.message, /最低音を B1 に下げ/)
+  assert.match(w.message, /B1 より低い音は拾えません/)
 })
 
 test('音域の上側(MIDI 88 超)も警告になる', () => {
