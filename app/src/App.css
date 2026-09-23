@@ -196,3 +196,163 @@ button:disabled { opacity: 0.5; cursor: default; }
 .chord-track.ghost .chord-seg.missed { background: var(--surface-1); color: var(--text-secondary); border: 1px dashed var(--baseline); }
 .chord-track.ghost .chord-seg.mismatch { background: var(--baseline); }
 .chord-progression { font-size: 12px; color: var(--text-secondary); margin: 0 16px 6px; word-break: break-all; }
+
+/* ---- 毎日の型(habit) ----
+   「今日の一本」→ 1 タップ録音 → 対戦カード/安定ゲージ → もう 1 回 → 今日のまとめ → 明日の予告、の一連の部品。
+   ロジックは src/habit/、表示は src/components/。データは既存テーブルの派生値と localStorage 2 キーだけ
+   (docs/habit/competition-result.md)。色は :root のトークンのみ。負けや空白を赤で責めない。 */
+
+/* スマホ枠の高さを画面に合わせ、各画面の 2 段目(overflowY: auto の div)を実際のスクロール領域にする。
+   診断画面の「もう 1 回」バー(.again-bar、position: sticky)が下端に貼り付くにはこれが必要。
+   以前は .phone が中身の高さまで伸びて body がスクロールしていたため、sticky が効かなかった */
+.phone { max-height: calc(100vh - 48px); }
+.topbar { flex: none; }
+.phone > :not(.topbar) { flex: 1 1 auto; min-height: 0; }
+
+/* --- WP-A: 対戦カード・安定ゲージ・もう 1 回バー --- */
+/* 対戦カード(診断画面の最上部) */
+.versus-card { margin: 16px; padding: 14px 16px; border: 1px solid var(--gridline); border-radius: 16px; }
+.versus-card .vs-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 10px; }
+.versus-card .vs-head .ttl { font-size: 14px; font-weight: 600; flex: 1; }
+.versus-card .vs-head .when { font-size: 11px; color: var(--text-muted); }
+.vs-grid { display: flex; flex-direction: column; gap: 6px; }
+/* 列見出し: 「前回 / 今回」。項目名の列は伸縮、値の列は固定幅で縦に揃える */
+.vs-col { display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--text-muted); }
+.vs-col .lbl { flex: 1; }
+.vs-col .v { width: 56px; text-align: right; }
+.vs-col .v.cur { color: var(--text-secondary); font-weight: 600; }
+.vs-col .m { width: 22px; }
+/* 矢印は見出し行(空白)と値行(→)で同じ幅にして列を揃える */
+.vs-col .arrow, .vs-item .arrow { width: 14px; text-align: center; color: var(--text-muted); font-size: 11px; }
+.vs-item { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 13px; }
+.vs-item .lbl { flex: 1; color: var(--text-secondary); }
+.vs-item .v { width: 56px; text-align: right; font-variant-numeric: tabular-nums; }
+.vs-item .v.cur { font-weight: 600; }
+.vs-item .sub { flex-basis: 100%; font-size: 10px; color: var(--text-muted); padding-left: 2px; }
+/* 勝敗マーク。○ 勝ち(系列色)/ △ 引き分け(灰)/ ● 負け(濃い灰)。形で区別できるので色だけに頼らない */
+.vs-mark { width: 22px; text-align: center; font-size: 14px; font-weight: 600; }
+.vs-mark.win { color: var(--series-1); }
+.vs-mark.draw { color: var(--text-muted); }
+.vs-mark.loss { color: var(--text-secondary); }
+.vs-tally { margin-top: 10px; font-size: 14px; font-weight: 600; }
+.vs-discovery { margin-top: 6px; font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
+.vs-discovery .k { font-size: 10px; color: var(--text-muted); margin-right: 6px; }
+.versus-card .vs-reason { font-size: 12px; color: var(--text-secondary); line-height: 1.5; padding: 4px 0; }
+.versus-card .note-block { margin: 10px 0 0; }
+
+/* 安定ゲージ。5 目盛りの横バー */
+.gauge { display: flex; gap: 4px; align-items: center; }
+.gauge .seg { flex: 1; height: 8px; border-radius: 999px; background: var(--gridline); }
+.gauge .seg.on { background: var(--series-1); }
+.gauge.compact { width: 56px; flex: none; gap: 2px; }
+.gauge.compact .seg { height: 6px; }
+.gauge-block { margin: 10px 16px; }
+.gauge-block .gauge-head { display: flex; align-items: baseline; gap: 8px; font-size: 12px; color: var(--text-secondary); margin-bottom: 6px; }
+.gauge-block .gauge-head .n { font-weight: 600; color: var(--text-primary); }
+.gauge-note { font-size: 11px; color: var(--text-muted); line-height: 1.5; margin-top: 6px; }
+
+/* もう 1 回バー。診断画面のスクロール領域の最後の子として置くと下端に貼り付く */
+.again-bar {
+  position: sticky;
+  bottom: 0;
+  margin-top: 12px;
+  padding: 10px 16px 14px;
+  background: var(--surface-1);
+  border-top: 1px solid var(--gridline);
+}
+.again-bar .mini-trend { font-size: 11px; color: var(--text-muted); margin-bottom: 8px; font-variant-numeric: tabular-nums; }
+.again-bar .mini-trend .n { color: var(--text-secondary); font-weight: 600; }
+.again-bar .btns { display: flex; gap: 8px; }
+.again-bar .btns button.primary { flex: 1; width: auto; }
+.again-bar .btns button.secondary { width: auto; padding: 10px 16px; }
+
+/* --- WP-B: 今日の一本・一覧カードの meta と冷え --- */
+/* 今日の一本(C01)。.stat-hero と同じトーンの枠。理由バッジは既存の .badge を流用 */
+.today-hero {
+  margin: 16px;
+  padding: 16px;
+  border: 1px solid var(--gridline);
+  border-radius: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.today-hero .kicker { font-size: 12px; font-weight: 600; color: var(--text-muted); flex: 1; }
+.today-hero .thread { font-size: 18px; font-weight: 600; line-height: 1.3; }
+.today-hero .thread .alt-label { font-size: 12px; font-weight: 600; color: var(--text-muted); }
+.today-hero .thread .badge.demo { margin-left: 6px; vertical-align: middle; }
+.today-hero .why { font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
+.today-hero .gauge-line { font-size: 11px; color: var(--text-muted); letter-spacing: 0.04em; }
+.today-hero .actions { margin-top: 4px; }
+/* 「別のにする · 設定を見る」。ボタンだが文字リンクの見え方にして主ボタンと競わせない */
+.today-hero .alt { display: flex; justify-content: center; align-items: center; gap: 8px; font-size: 11px; color: var(--text-muted); }
+.today-hero .alt .link {
+  border: none;
+  background: none;
+  padding: 2px 4px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+/* 今日の分を録った後は主張を弱める(1 本で終わる合図にはしないが、催促にもしない) */
+.today-hero.done { border-style: dashed; }
+.today-hero.done .thread { font-size: 15px; }
+
+/* スレッドの冷え(C08)。左端 3px のバーだけで、温(青)→冷(灰)の 4 段階。警告色は使わない。
+   .card の border は 1px なので左だけ太くし、カード内の余白は変えない */
+.card.warmth-0 { border-left: 3px solid var(--series-1); }
+.card.warmth-1 { border-left: 3px solid color-mix(in srgb, var(--series-1) 45%, var(--surface-1)); }
+.card.warmth-2 { border-left: 3px solid var(--baseline); }
+.card.warmth-3 { border-left: 3px solid var(--gridline); }
+
+/* 「3 日前 · 12 テイク · ♩=80」。.meta の上書きは無し(1 行で切る) */
+.thread-meta { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* ゲージが判定不能で何も描かれなかったときは行ごと消す(flex の gap で空行が残らないように) */
+.today-hero .gauge-line:empty { display: none; }
+.today-hero .gauge-line { display: flex; align-items: center; gap: 8px; }
+.today-hero .gauge-line .n { color: var(--text-secondary); font-weight: 600; }
+/* 一覧カード: バッジの隣に compact ゲージ */
+.card .row .gauge.compact { margin-left: 2px; }
+
+/* --- WP-C: 今日のまとめ・明日の予告 --- */
+/* 今日のまとめ(C11)。ホーム最上部の 1 枚。stat-hero と同じ枠のトーン */
+.today-summary { margin: 16px; padding: 14px 16px; border: 1px solid var(--gridline); border-radius: 16px; }
+.today-summary .kicker { font-size: 11px; font-weight: 600; color: var(--text-muted); }
+.today-summary .facts { font-size: 20px; font-weight: 600; margin-top: 4px; }
+.today-summary .facts .unit { font-size: 13px; font-weight: 400; color: var(--text-secondary); margin: 0 6px 0 2px; }
+.today-summary .tally { font-size: 12px; color: var(--text-secondary); margin-top: 6px; }
+.today-summary .delta-line { font-size: 12px; margin-top: 6px; display: flex; gap: 6px; }
+.today-summary .delta-line .t { color: var(--text-secondary); flex: none; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.today-summary .delta-line .d { color: var(--text-primary); }
+.today-summary .challenge-row { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--gridline); font-size: 12px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.today-summary .challenge-row .lbl { color: var(--text-muted); flex: none; }
+.today-summary .challenge-row .link { border: none; background: none; padding: 0; font-size: 12px; color: var(--series-1); cursor: pointer; }
+.today-summary .challenge-row button.secondary { width: auto; padding: 6px 10px; font-size: 12px; }
+.today-summary .close { display: flex; justify-content: flex-end; margin-top: 10px; }
+.today-summary .close button { width: auto; padding: 8px 14px; font-size: 12px; }
+.today-summary .why { font-size: 11px; color: var(--text-muted); margin-top: 8px; line-height: 1.5; }
+
+/* 明日の予告フォーム(C13)。診断画面のスクロール領域の最後 */
+.next-challenge { margin: 16px; padding: 14px 16px; border: 1px solid var(--gridline); border-radius: 16px; }
+.next-challenge .kicker { font-size: 11px; font-weight: 600; color: var(--text-muted); }
+.next-challenge .lead { font-size: 14px; margin-top: 4px; line-height: 1.5; }
+.next-challenge .target { font-weight: 600; color: var(--series-1); }
+.next-challenge .actions { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+.next-challenge .actions button.primary { width: auto; padding: 10px 18px; font-size: 13px; }
+.next-challenge .actions .link { border: none; background: none; padding: 0; font-size: 12px; color: var(--text-secondary); cursor: pointer; text-decoration: underline; }
+.next-challenge .fine { font-size: 11px; color: var(--text-muted); margin-top: 8px; line-height: 1.5; }
+/* 予告済み: 枠を青にして「もう押さなくていい」を伝える(色だけに頼らず文言も変える) */
+.next-challenge.set { border-color: var(--series-1); }
+.next-challenge.set .lead { color: var(--text-secondary); }
+
+/* 予告の結果 1 行(C13)。VersusCard の直下。該当テイクのときだけ出る */
+.challenge-status { margin: 0 16px 8px; padding: 8px 12px; border-radius: 12px; font-size: 12px; display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; border: 1px solid var(--gridline); color: var(--text-secondary); }
+.challenge-status .lbl { color: var(--text-muted); flex: none; }
+.challenge-status .result { font-weight: 600; color: var(--text-primary); }
+.challenge-status.fulfilled { border-color: var(--series-1); }
+.challenge-status.fulfilled .result { color: var(--series-1); }
+/* 未達・判定なしは強調しない(責めない)。枠の色は既定のまま、文字も secondary */
+.challenge-status.missed .result { color: var(--text-secondary); }
+.challenge-status .why { font-size: 11px; color: var(--text-muted); flex-basis: 100%; }

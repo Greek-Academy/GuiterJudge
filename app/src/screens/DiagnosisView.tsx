@@ -8,11 +8,19 @@ import { formatProgression, type ChordDiagnosis } from '../chordRecognition'
 import { LOW_CONFIDENCE } from '../gridTiming'
 import PianoRoll, { type PianoRollNote } from '../components/PianoRoll'
 import ChordTimeline from '../components/ChordTimeline'
+import VersusCard from '../components/VersusCard'
+import NextChallengeStatus from '../components/NextChallengeStatus'
+import NextChallengeForm from '../components/NextChallengeForm'
+import RecordAgainBar from '../components/RecordAgainBar'
 
 type Props = {
   threadId: string
   takeId: string
   onBack: () => void
+  /** 「● もう 1 回録る」。スレッド画面を autoRecord で開く */
+  onRecordAgain: () => void
+  /** 「一覧へ」。今日のまとめを見に戻る */
+  onGoHome: () => void
 }
 
 const SUBDIVISION_LABEL: Record<number, string> = { 1: '4分', 2: '8分', 3: '3連', 4: '16分' }
@@ -30,7 +38,7 @@ function signed(v: number, digits = 1) {
   return v > 0 ? `+${s}` : s
 }
 
-export default function DiagnosisView({ threadId, takeId, onBack }: Props) {
+export default function DiagnosisView({ threadId, takeId, onBack, onRecordAgain, onGoHome }: Props) {
   const [mode, setMode] = useState<'prev' | 'best' | 'reference'>('prev')
   const [result, setResult] = useState<
     (DiagnosisMetrics & { chord: ChordDiagnosis | null; comparedToTakeId: string }) | null | undefined
@@ -105,6 +113,10 @@ export default function DiagnosisView({ threadId, takeId, onBack }: Props) {
         <h1>診断結果</h1>
       </div>
       <div style={{ overflowY: 'auto' }}>
+        {/* 毎日の型: まず「前回の自分と」の 3 項目の勝敗、予告の判定対象テイクなら達成/惜しいの 1 行 */}
+        <VersusCard threadId={threadId} takeId={takeId} />
+        <NextChallengeStatus threadId={threadId} takeId={takeId} />
+
         {/* 絶対指標: メトロノーム録音なら比較対象なしで出る。上に置く(これが安定度の本体) */}
         {take.metronome && (
           <>
@@ -291,6 +303,10 @@ export default function DiagnosisView({ threadId, takeId, onBack }: Props) {
             </div>
           </>
         )}
+
+        {/* 締め: 明日の予告 → 「もう 1 回」バー。バーは sticky なのでスクロール領域の最後の子に置く */}
+        <NextChallengeForm threadId={threadId} takeId={takeId} />
+        <RecordAgainBar threadId={threadId} onRecordAgain={onRecordAgain} onGoHome={onGoHome} />
       </div>
     </>
   )

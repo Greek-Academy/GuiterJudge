@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import db, { type MetronomeSpec } from '../db'
 import {
@@ -17,6 +17,10 @@ import type { BeatInfo } from '../metronome'
 import type { Subdivision } from '../gridTiming'
 import ScoreTrend, { type ScoreTrendPoint } from '../components/ScoreTrend'
 import { JITTER_METRIC, RELATIVE_JITTER_METRIC } from '../components/trendMetrics'
+import StabilityGauge from '../components/StabilityGauge'
+import { useStabilityGauge } from '../habit/useStabilityGauge'
+import { GAUGE_MAX } from '../habit/verdict'
+import { micPermissionGranted } from '../habit/micPermission'
 
 /** 初めてメトロノームをONにしたときの既定値。16分を既定にしているのは、粗い格子で細かい演奏を測ると
  *  半数の音が格子の中間に落ちて解析が破綻するため(細かい格子で粗い演奏を測るのは問題ない) */
@@ -32,11 +36,13 @@ type Props = {
   threadId: string
   onBack: () => void
   onOpenDiagnosis: (takeId: string) => void
+  /** 「今日の一本」「もう 1 回」から来たとき true。マイク許可済みの端末だけ、開いた直後に録音を始める */
+  autoRecord?: boolean
 }
 
 type Notice = { kind: 'success' | 'error'; text: string }
 
-export default function ThreadDetail({ threadId, onBack, onOpenDiagnosis }: Props) {
+export default function ThreadDetail({ threadId, onBack, onOpenDiagnosis, autoRecord = false }: Props) {
   const [isRecording, setIsRecording] = useState(false)
   const [busy, setBusy] = useState(false)
   /** null = メトロノームなしで録る */
@@ -60,6 +66,9 @@ export default function ThreadDetail({ threadId, onBack, onOpenDiagnosis }: Prop
     () => db.takes.where({ threadId, role: 'normal' }).reverse().sortBy('recordedAt'),
     [threadId],
   )
+  // 安定ゲージ(直前のテイクと同じように弾けた回数)。満タンなら解決ボタンを主ボタンに昇格させるだけで、自動では解決しない
+  const gauge = useStabilityGauge(threadId)
+  const gaugeFull = gauge.available && gauge.value >= GAUGE_MAX
   const referenceTake = useLiveQuery(() => db.takes.where({ threadId, role: 'reference' }).first(), [threadId])
   const diagnosisByTake = useLiveQuery(async () => {
     const results = await db.diagnosisResults.toArray()
@@ -112,6 +121,22 @@ export default function ThreadDetail({ threadId, onBack, onOpenDiagnosis }: Prop
     setMetro(next)
     void setThreadMetronome(threadId, next)
   }
+
+  // autoRecord で開いたとき、メトロノーム設定の読み込みを待ってから 1 度だけ録音を始める。
+  // 初回はマイク許可ダイアログが出るので「開いたら勝手に録音」に見せない。許可済みのときだけ自動で始め、
+  // 未許可・非対応の端末では従来どおりボタンを押してもらう(案内を 1 行出す)
+  const autoStarted = useRef(false)
+  useEffect(() => {
+    if (!autoRecord || !metroLoaded || autoStarted.current || isRecording || busy) return
+    autoStarted.current = true
+    void (async () => {
+      const granted = await micPermissionGranted()
+      if (granted) await handleRecordToggle()
+      else setNotice({ kind: 'success', text: '「● 録音する」を押すと始まります(初回はマイクの許可が必要です)' })
+    })()
+    // handleRecordToggle / isRecording / busy は毎描画で変わるが、autoStarted で 1 回に絞っているので依存に入れない
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoRecord, metroLoaded])
 
   async function handleRecordToggle() {
     setNotice(null)
@@ -324,6 +349,8 @@ export default function ThreadDetail({ threadId, onBack, onOpenDiagnosis }: Prop
             <ScoreTrend points={trend.points} metric={trend.metric} onSelect={(i) => onOpenDiagnosis(trend.takeIds[i])} />
           </div>
         )}
+        {/* 解決候補までの安定ゲージ。満タンでも解決は下のボタン+自己確認で人が決める */}
+        <StabilityGauge threadId={threadId} />
 
         <div className="section-title">お手本(任意)</div>
         {referenceTake ? (
@@ -452,11 +479,11 @@ export default function ThreadDetail({ threadId, onBack, onOpenDiagnosis }: Prop
         {thread.status === 'active' &&
           (!showSelfCheck ? (
             <button
-              className="secondary"
+              className={gaugeFull ? 'primary' : 'secondary'}
               style={{ margin: '14px 16px', width: 'calc(100% - 32px)' }}
               onClick={() => setShowSelfCheck(true)}
             >
-              ✓ このスレッドを解決済みにする
+              {gaugeFull ? `✓ 安定 ${GAUGE_MAX} 回。解決済みにしますか?` : '✓ このスレッドを解決済みにする'}
             </button>
           ) : (
             <div className="self-check">

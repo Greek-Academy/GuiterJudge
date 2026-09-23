@@ -1,12 +1,23 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import db from '../db'
 import { createPhraseThread, createSongThroughThread } from '../actions'
 import { exportAllData, importAllData } from '../backup'
 import { seedDemoData, clearAllData, hasDemoData, type SeedProgress } from '../demo/seed'
+import TodaySummary from '../components/TodaySummary'
+import TodayHero from '../components/TodayHero'
+import StabilityGauge from '../components/StabilityGauge'
+import ThreadCardMeta from '../components/ThreadCardMeta'
+import { useAllHabitData } from '../habit/useThreadTakes'
+import { useStabilityGauge } from '../habit/useStabilityGauge'
+import { latestOutcomeByThread, stabilityGauge } from '../habit/verdict'
+import { pickToday, warmthClass } from '../habit/pickToday'
+import { isChallengeDueToday, useNextChallenge } from '../habit/nextChallenge'
 
 type Props = {
   onOpenThread: (id: string) => void
+  /** 「今日の一本」「予告」の ● から。スレッド画面を autoRecord で開く */
+  onRecordNow: (id: string) => void
   onOpenSongThrough: (id: string) => void
   onOpenLab: () => void
 }
@@ -16,7 +27,7 @@ type Notice = { kind: 'success' | 'error'; text: string }
 /** 新規スレッド作成の入力欄。window.promptだとプロジェクタにOS標準ダイアログが割り込むため画面内に置く */
 type Composing = null | { type: 'phrase' | 'songThrough' }
 
-export default function ThreadList({ onOpenThread, onOpenSongThrough, onOpenLab }: Props) {
+export default function ThreadList({ onOpenThread, onRecordNow, onOpenSongThrough, onOpenLab }: Props) {
   const [composing, setComposing] = useState<Composing>(null)
   const [draftTitle, setDraftTitle] = useState('')
   const [notice, setNotice] = useState<Notice | null>(null)
@@ -57,6 +68,30 @@ export default function ThreadList({ onOpenThread, onOpenSongThrough, onOpenLab 
     }
     return map
   }, [])
+
+  // 「今日の一本」の材料。全スレッドのテイクと直前比の診断を 1 度だけ購読し、判定(verdict)→ 候補選定(pickToday)は純関数。
+  // 予告は localStorage なので useNextChallenge で購読して、予告する/取り消すの直後に hero が追従するようにする
+  const habit = useAllHabitData()
+  const challenge = useNextChallenge()
+  const heroState = useMemo(() => {
+    const { threads, takesAsc, prevDiagByTake } = habit
+    if (!threads || !takesAsc || !prevDiagByTake) return undefined
+    const outcomeByThread = latestOutcomeByThread(takesAsc, prevDiagByTake)
+    const gaugeByThread = new Map<string, number>()
+    for (const t of threads) {
+      if (t.type !== 'phrase' || t.status !== 'active') continue
+      const g = stabilityGauge(takesAsc.filter((x) => x.threadId === t.id), prevDiagByTake)
+      if (g.available) gaugeByThread.set(t.id, g.value)
+    }
+    const due = challenge && isChallengeDueToday(challenge) ? challenge : null
+    return pickToday({ threads, takesAsc, outcomeByThread, gaugeByThread, challenge: due, prevDiagByTake })
+  }, [habit, challenge])
+  // 一覧カードの「N テイク」。音符起こしに成功した normal テイクの数(ゲージや hero と同じ母集団)
+  const takeCountByThread = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const t of habit.takesAsc ?? []) m.set(t.threadId, (m.get(t.threadId) ?? 0) + 1)
+    return m
+  }, [habit.takesAsc])
 
   function beginCompose(type: 'phrase' | 'songThrough') {
     setComposing({ type })
@@ -127,14 +162,25 @@ export default function ThreadList({ onOpenThread, onOpenSongThrough, onOpenLab 
       <div style={{ overflowY: 'auto' }}>
         {notice && <div className={`notice ${notice.kind}`}>{notice.text}</div>}
 
+        {/* 毎日の型: 今日録った日は「今日のまとめ」が先、その下に「今日の一本」。デモテイクは今日分に数えない */}
+        <TodaySummary onRecordNow={onRecordNow} />
+        <TodayHero
+          state={heroState}
+          onRecordNow={onRecordNow}
+          onOpenThread={onOpenThread}
+          onCompose={() => beginCompose('phrase')}
+          renderGauge={(id) => <HeroGauge threadId={id} />}
+        />
+
         <div className="section-title">アクティブなスレッド</div>
         {(activeThreads ?? []).map((t) => (
-          <div className="card" key={t.id} onClick={() => onOpenThread(t.id)}>
+          <div className={`card ${warmthClass(t.lastActivityAt)}`} key={t.id} onClick={() => onOpenThread(t.id)}>
             <div className="row">
               <div className="title">{t.title}</div>
+              <StabilityGauge threadId={t.id} compact />
               {latestBadges?.has(t.id) && <div className="badge">{latestBadges.get(t.id)}</div>}
             </div>
-            <div className="meta">最終更新: {new Date(t.lastActivityAt).toLocaleString('ja-JP')}</div>
+            <ThreadCardMeta thread={t} takeCount={takeCountByThread.get(t.id) ?? 0} />
           </div>
         ))}
         {(activeThreads ?? []).length === 0 && !composing && (
@@ -283,6 +329,21 @@ export default function ThreadList({ onOpenThread, onOpenSongThrough, onOpenLab 
           </button>
         </div>
       </div>
+    </>
+  )
+}
+
+/** hero の中の「解決候補まで ●●●○○ 3/5」。判定できないスレッドでは何も描かない(親の .gauge-line:empty が行ごと消す) */
+function HeroGauge({ threadId }: { threadId: string }) {
+  const gauge = useStabilityGauge(threadId)
+  if (!gauge.available) return null
+  return (
+    <>
+      <span>解決候補まで</span>
+      <StabilityGauge threadId={threadId} compact />
+      <span className="n">
+        {gauge.value}/{gauge.max}
+      </span>
     </>
   )
 }

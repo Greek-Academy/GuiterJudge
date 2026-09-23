@@ -8,7 +8,8 @@ import TranscriptionLab from './screens/TranscriptionLab'
 
 type Screen =
   | { name: 'list' }
-  | { name: 'thread'; threadId: string }
+  /** autoRecord: 「今日の一本」「もう 1 回」から来たとき。マイク許可済みなら開いた直後に録音を始める */
+  | { name: 'thread'; threadId: string; autoRecord?: boolean }
   | { name: 'diagnosis'; threadId: string; takeId: string }
   | { name: 'songThrough'; threadId: string }
   | { name: 'lab' }
@@ -21,6 +22,7 @@ function App() {
       {screen.name === 'list' && (
         <ThreadList
           onOpenThread={(threadId) => setScreen({ name: 'thread', threadId })}
+          onRecordNow={(threadId) => setScreen({ name: 'thread', threadId, autoRecord: true })}
           onOpenSongThrough={(threadId) => setScreen({ name: 'songThrough', threadId })}
           onOpenLab={() => setScreen({ name: 'lab' })}
         />
@@ -29,6 +31,7 @@ function App() {
       {screen.name === 'thread' && (
         <ThreadDetail
           threadId={screen.threadId}
+          autoRecord={screen.autoRecord === true}
           onBack={() => setScreen({ name: 'list' })}
           onOpenDiagnosis={(takeId) => setScreen({ name: 'diagnosis', threadId: screen.threadId, takeId })}
         />
@@ -38,6 +41,8 @@ function App() {
           threadId={screen.threadId}
           takeId={screen.takeId}
           onBack={() => setScreen({ name: 'thread', threadId: screen.threadId })}
+          onRecordAgain={() => setScreen({ name: 'thread', threadId: screen.threadId, autoRecord: true })}
+          onGoHome={() => setScreen({ name: 'list' })}
         />
       )}
       {screen.name === 'songThrough' && (
