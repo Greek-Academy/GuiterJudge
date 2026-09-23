@@ -136,7 +136,8 @@ async function runDiagnosisForTake(threadId: string, take: Take): Promise<string
   const target = await pickComparisonTarget(threadId, take.id)
   if (!target || !take.noteEvents) return undefined
 
-  const metrics = diagnose(target.take.noteEvents!, take.noteEvents)
+  // 楽譜由来のお手本は格子どおりで音の分割が無く、相手はテンポの揺れる人の演奏なので、比較の前処理を切り替える(comparison.ts DiagnosisOptions)
+  const metrics = diagnose(target.take.noteEvents!, take.noteEvents, { referenceIsScore: target.take.sourceType === 'importedScore' })
   const diagnosisId = newId()
   await db.diagnosisResults.add({
     id: diagnosisId,
@@ -262,7 +263,11 @@ export async function recomputeDiagnosis(
   if (!targetTake?.noteEvents) return null
   const chord: ChordDiagnosis | null =
     targetTake.chordEvents && take.chordEvents ? diagnoseChords(targetTake.chordEvents, take.chordEvents) : null
-  return { metrics: diagnose(targetTake.noteEvents, take.noteEvents), chord, comparedToTakeId: targetTake.id }
+  return {
+    metrics: diagnose(targetTake.noteEvents, take.noteEvents, { referenceIsScore: targetTake.sourceType === 'importedScore' }),
+    chord,
+    comparedToTakeId: targetTake.id,
+  }
 }
 
 export async function setReferenceTakeFromFile(threadId: string, file: File): Promise<void> {

@@ -1,5 +1,5 @@
 import type { NoteEvent, DeviationSegment } from './db'
-import { mergeSplitNotes } from './noteCleanup'
+import { mergeSplitNotes, splitWindowForScoreReference, UNISON_WINDOW_MS } from './noteCleanup'
 
 // DesignDoc Section 5「アライメント」: Basic Pitch pathの音符列同士のシーケンスアライメント。
 // M1予備検証(Appendix B)で「音符を出現順で単純対応付けする方法は脆い」ことが確認されたため、
@@ -10,13 +10,19 @@ export type NoteAlignmentPair = { ref?: NoteEvent; take?: NoteEvent }
 const INSERT_DELETE_COST = 6 // 弾き忘れ/余分な音符1つ分のペナルティ(暫定値。M1で調整)
 const TIMING_COST_PER_100MS = 1
 
-function pairCost(a: NoteEvent, b: NoteEvent): number {
+function pairCost(a: NoteEvent, b: NoteEvent, timingCostPer100Ms: number = TIMING_COST_PER_100MS): number {
   const pitchDiff = Math.abs(a.pitch - b.pitch)
-  const timingDiff = (Math.abs(a.startMs - b.startMs) / 100) * TIMING_COST_PER_100MS
+  const timingDiff = (Math.abs(a.startMs - b.startMs) / 100) * timingCostPer100Ms
   return pitchDiff + timingDiff
 }
 
-export function alignNoteSequences(ref: NoteEvent[], take: NoteEvent[]): NoteAlignmentPair[] {
+/** timingCostPer100Ms を下げると時刻差より音高を重視した対応になる(ルバート追従の種に使う) */
+export function alignNoteSequences(
+  ref: NoteEvent[],
+  take: NoteEvent[],
+  timingCostPer100Ms: number = TIMING_COST_PER_100MS,
+): NoteAlignmentPair[] {
+  const cost = (a: NoteEvent, b: NoteEvent) => pairCost(a, b, timingCostPer100Ms)
   const n = ref.length
   const m = take.length
   const dp: number[][] = Array.from({ length: n + 1 }, () => new Array<number>(m + 1).fill(0))
@@ -25,7 +31,7 @@ export function alignNoteSequences(ref: NoteEvent[], take: NoteEvent[]): NoteAli
 
   for (let i = 1; i <= n; i++) {
     for (let j = 1; j <= m; j++) {
-      const sub = dp[i - 1][j - 1] + pairCost(ref[i - 1], take[j - 1])
+      const sub = dp[i - 1][j - 1] + cost(ref[i - 1], take[j - 1])
       const del = dp[i - 1][j] + INSERT_DELETE_COST // refにあってtakeにない = 弾き忘れ
       const ins = dp[i][j - 1] + INSERT_DELETE_COST // takeにあってrefにない = 余分に弾いた
       dp[i][j] = Math.min(sub, del, ins)
@@ -36,7 +42,7 @@ export function alignNoteSequences(ref: NoteEvent[], take: NoteEvent[]): NoteAli
   let i = n
   let j = m
   while (i > 0 || j > 0) {
-    if (i > 0 && j > 0 && dp[i][j] === dp[i - 1][j - 1] + pairCost(ref[i - 1], take[j - 1])) {
+    if (i > 0 && j > 0 && dp[i][j] === dp[i - 1][j - 1] + cost(ref[i - 1], take[j - 1])) {
       pairs.unshift({ ref: ref[i - 1], take: take[j - 1] })
       i--
       j--
@@ -158,8 +164,21 @@ function alignWithPrescale(ref: NoteEvent[], take: NoteEvent[], p: Prescale): Al
   const fitN = fitTimeMap(alignNoteSequences(ref, normalized))
   // normalized = a + b * ref、normalized = (t - anchorTake) / scale + anchorRef を合成して t = A + B * ref に戻す
   const fit: TimeFit = { offsetMs: p.anchorTakeMs + p.scale * (fitN.offsetMs - p.anchorRefMs), ratio: p.scale * fitN.ratio }
-  const corrected: IndexedNote[] = take.map((t, i) => ({ ...t, startMs: (t.startMs - fit.offsetMs) / fit.ratio, index: i }))
-  const rawPairs = alignNoteSequences(ref, corrected)
+  return { ...alignOnMappedAxis(ref, take, (t) => (t - fit.offsetMs) / fit.ratio), fit }
+}
+
+/**
+ * take の時刻を toRef で基準の時間軸に写してからアライメントし、元の時刻の take で対応を返す。
+ * cost は写した時間軸での総コスト(候補どうしの比較に使う)。
+ */
+function alignOnMappedAxis(
+  ref: NoteEvent[],
+  take: NoteEvent[],
+  toRef: (takeMs: number) => number,
+  timingCostPer100Ms: number = TIMING_COST_PER_100MS,
+): { pairs: NoteAlignmentPair[]; matched: number; cost: number } {
+  const mapped: IndexedNote[] = take.map((t, i) => ({ ...t, startMs: toRef(t.startMs), index: i }))
+  const rawPairs = alignNoteSequences(ref, mapped, timingCostPer100Ms)
   const pairs: NoteAlignmentPair[] = rawPairs.map((q) => ({
     ref: q.ref,
     take: q.take ? take[(q.take as IndexedNote).index] : undefined,
@@ -172,7 +191,128 @@ function alignWithPrescale(ref: NoteEvent[], take: NoteEvent[], p: Prescale): Al
       cost += pairCost(q.ref, q.take)
     } else cost += INSERT_DELETE_COST
   }
-  return { pairs, fit, matched, cost }
+  return { pairs, matched, cost }
+}
+
+// ---- 楽譜由来のお手本とのルバート追従(DiagnosisOptions.referenceIsScore) ----
+// 格子どおりのお手本と人の演奏では、テンポ差を 1 本の直線で除いても局所的なテンポの揺れ(ルバート・フレーズ末の減速)が残り、
+// 8 小節を超えるとずれが挿入削除コストを超えて対応が崩れる(GAPS test、正解 MIDI vs 楽譜 16 小節で正しい対応 67%。
+// docs/score-import/real-performance-eval.md)。直線補正の後に、基準の時間軸で一定間隔の節点を持つ連続区分線形の時間写像を当て直す。
+
+/** 区分線形の節点の間隔(基準の時間軸、ms)。GAPS で 1.5〜6 秒を試して 3 秒が最良(差は小さい) */
+const TEMPO_TRACK_KNOT_MS = 3000
+/** 各節点を直線補正の値に引き寄せる強さ(擬似観測の個数)。対応の少ない区間で写像が暴れないように */
+const TEMPO_TRACK_PRIOR_WEIGHT = 2
+/** 区分線形の種にするアライメントの時刻コスト(100ms あたり)。低くして音高で対応を取る(ずれた時間軸に引きずられない) */
+const TEMPO_TRACK_SEED_TIMING_COST = 0.1
+/** 節点間の傾きの下限(直線補正の傾きに対する比)。時間が逆行する写像を作らない */
+const TEMPO_TRACK_MIN_SLOPE = 0.3
+
+/** 連続区分線形の写像 take = f(ref)。xs は基準の時間軸の節点、ys はそこでの take の時刻(単調増加) */
+type PiecewiseMap = { xs: number[]; ys: number[] }
+
+function interpolate(xs: number[], ys: number[], x: number): number {
+  const n = xs.length
+  if (x <= xs[0]) return ys[0] + ((x - xs[0]) * (ys[1] - ys[0])) / (xs[1] - xs[0])
+  if (x >= xs[n - 1]) return ys[n - 1] + ((x - xs[n - 1]) * (ys[n - 1] - ys[n - 2])) / (xs[n - 1] - xs[n - 2])
+  let lo = 0
+  let hi = n - 1
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1
+    if (xs[mid] <= x) lo = mid
+    else hi = mid
+  }
+  return ys[lo] + ((x - xs[lo]) * (ys[hi] - ys[lo])) / (xs[hi] - xs[lo])
+}
+
+/** 対応点 (xs, ys) に連続区分線形を最小二乗で当てる。節点は [x0, x1] を knotMs 前後の等間隔、各節点に直線 prior への引き寄せ */
+function fitPiecewise(xs: number[], ys: number[], prior: TimeFit, x0: number, x1: number): PiecewiseMap {
+  const k = Math.max(1, Math.round((x1 - x0) / TEMPO_TRACK_KNOT_MS))
+  const step = (x1 - x0) / k
+  const knots = Array.from({ length: k + 1 }, (_, i) => x0 + i * step)
+  const n = k + 1
+  // 正規方程式(三重対角)。基底は節点ごとの山形関数
+  const lower = new Array<number>(n).fill(0)
+  const diag = new Array<number>(n).fill(0)
+  const upper = new Array<number>(n).fill(0)
+  const rhs = new Array<number>(n).fill(0)
+  for (let i = 0; i < xs.length; i++) {
+    const seg = Math.max(0, Math.min(k - 1, Math.floor((xs[i] - x0) / step)))
+    const t = Math.max(0, Math.min(1, (xs[i] - knots[seg]) / step))
+    const w0 = 1 - t
+    const w1 = t
+    diag[seg] += w0 * w0
+    diag[seg + 1] += w1 * w1
+    upper[seg] += w0 * w1
+    lower[seg + 1] += w0 * w1
+    rhs[seg] += w0 * ys[i]
+    rhs[seg + 1] += w1 * ys[i]
+  }
+  for (let i = 0; i < n; i++) {
+    diag[i] += TEMPO_TRACK_PRIOR_WEIGHT
+    rhs[i] += TEMPO_TRACK_PRIOR_WEIGHT * (prior.offsetMs + prior.ratio * knots[i])
+  }
+  // Thomas 法(対角優位なので枢軸選択は要らない)
+  for (let i = 1; i < n; i++) {
+    const m = lower[i] / diag[i - 1]
+    diag[i] -= m * upper[i - 1]
+    rhs[i] -= m * rhs[i - 1]
+  }
+  const y = new Array<number>(n).fill(0)
+  y[n - 1] = rhs[n - 1] / diag[n - 1]
+  for (let i = n - 2; i >= 0; i--) y[i] = (rhs[i] - upper[i] * y[i + 1]) / diag[i]
+  const minRise = TEMPO_TRACK_MIN_SLOPE * prior.ratio * step
+  for (let i = 1; i < n; i++) if (y[i] - y[i - 1] < minRise) y[i] = y[i - 1] + minRise
+  return { xs: knots, ys: y }
+}
+
+/**
+ * 直線補正で得た対応を出発点に、区分線形の時間写像で取り直す。総コストが下がった時だけ採る(下がらなければ null)。
+ * 種の対応は時刻コストを下げたアライメントで取り、音高の合った対応だけを使う
+ * (直線補正の対応をそのまま使うと、崩れた区間の誤対応に写像が引きずられて回復しない)。
+ */
+function trackLocalTempo(ref: NoteEvent[], take: NoteEvent[], base: AlignmentTrial): AlignmentTrial | null {
+  if (ref.length < PRESCALE_MIN_NOTES) return null
+  const x0 = ref[0].startMs
+  const x1 = ref[ref.length - 1].startMs
+  if (x1 <= x0) return null
+  const { fit } = base
+  const seed = alignOnMappedAxis(ref, take, (t) => (t - fit.offsetMs) / fit.ratio, TEMPO_TRACK_SEED_TIMING_COST)
+  const xs: number[] = []
+  const ys: number[] = []
+  for (const p of seed.pairs) {
+    if (p.ref && p.take && p.ref.pitch === p.take.pitch) {
+      xs.push(p.ref.startMs)
+      ys.push(p.take.startMs)
+    }
+  }
+  if (xs.length < PRESCALE_MIN_NOTES) return null
+  const map = fitPiecewise(xs, ys, fit, x0, x1)
+  const trial = alignOnMappedAxis(ref, take, (t) => interpolate(map.ys, map.xs, t))
+  if (trial.cost >= base.cost - 1e-9) return null
+  // ばらつき・テンポ差・オフセットの定義は変えない: 取り直した対応に直線を当て直す
+  const mx: number[] = []
+  const my: number[] = []
+  for (const p of trial.pairs) {
+    if (p.ref && p.take) {
+      mx.push(p.ref.startMs)
+      my.push(p.take.startMs)
+    }
+  }
+  return { ...trial, fit: fitLine(mx, my) }
+}
+
+export type DiagnosisOptions = {
+  /**
+   * 基準が楽譜ファイル由来のお手本(Take.sourceType 'importedScore')。格子どおりで音の分割が無く、
+   * 相手は人の演奏(テンポが揺れる)という前提の比較に切り替える:
+   *  - 基準側は分割統合をせず、同時刻の同音(多声部のユニゾン)だけまとめる。テイク側は、基準で速い同音連打がある音高だけ
+   *    分割統合の窓を縮める(splitWindowForScoreReference)
+   *  - 直線のテンポ補正の後に区分線形のテンポ追従(trackLocalTempo)を試し、総コストが下がれば対応をそちらで取り直す
+   * 人間どうしの比較(prev・録音のお手本)には使わない(分割はどちらのテイクにもあり、テンポ追従は GAPS の prev 相当で
+   * 対応が変わらず、ばらつきだけが ±30ms 動く組があったため)。
+   */
+  referenceIsScore?: boolean
 }
 
 /**
@@ -188,9 +328,10 @@ function alignWithPrescale(ref: NoteEvent[], take: NoteEvent[], p: Prescale): Al
  * 正規化なし)のものを採る。テンポ差が小さければ候補どうしの 1 パス目の対応は同じになり、
  * 直線フィットは線形変換に対して不変なので結果は正規化なしと一致する。
  */
-export function alignForDiagnosis(refRaw: NoteEvent[], takeRaw: NoteEvent[]): DiagnosisAlignment {
-  const refMerged = mergeSplitNotes(refRaw)
-  const takeMerged = mergeSplitNotes(takeRaw)
+export function alignForDiagnosis(refRaw: NoteEvent[], takeRaw: NoteEvent[], opts: DiagnosisOptions = {}): DiagnosisAlignment {
+  const score = opts.referenceIsScore === true
+  const refMerged = mergeSplitNotes(refRaw, score ? UNISON_WINDOW_MS : undefined)
+  const takeMerged = mergeSplitNotes(takeRaw, score ? splitWindowForScoreReference(refMerged.notes, takeRaw) : undefined)
   const ref = refMerged.notes
   const take = takeMerged.notes
 
@@ -205,6 +346,7 @@ export function alignForDiagnosis(refRaw: NoteEvent[], takeRaw: NoteEvent[]): Di
       bestScale = p.scale
     }
   }
+  if (score) best = trackLocalTempo(ref, take, best!) ?? best
   const { pairs, fit } = best!
   return { ref, take, pairs, fit, tempoScale: bestScale, mergedNoteCount: refMerged.mergedCount + takeMerged.mergedCount }
 }
@@ -249,8 +391,8 @@ const TIMING_FLAG_MS = 80
  *  3. 無単位の合成値は「なぜその値か」を説明できない。
  * 代わりに、単位を持つ量に分解してそのまま返す。ばらつきは ms、一致率は %。
  */
-export function diagnose(refRaw: NoteEvent[], takeRaw: NoteEvent[]): DiagnosisMetrics {
-  const { pairs, fit, tempoScale, mergedNoteCount } = alignForDiagnosis(refRaw, takeRaw)
+export function diagnose(refRaw: NoteEvent[], takeRaw: NoteEvent[], opts: DiagnosisOptions = {}): DiagnosisMetrics {
+  const { pairs, fit, tempoScale, mergedNoteCount } = alignForDiagnosis(refRaw, takeRaw, opts)
   const matched = pairs.filter((p) => p.ref && p.take)
   const missedOrExtraNoteCount = pairs.length - matched.length
 
