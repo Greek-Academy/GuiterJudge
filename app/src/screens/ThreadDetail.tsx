@@ -377,13 +377,15 @@ export default function ThreadDetail({ threadId, onBack, onOpenDiagnosis, autoRe
                     <span className="lbl">最小音価</span>
                     <div className="pill-row" style={{ margin: 0, flex: 1 }}>
                       {SUBDIVISIONS.map((s) => (
-                        <div
+                        <button
+                          type="button"
                           key={s.value}
                           className={`pill ${metro.subdivision === s.value ? 'active' : ''}`}
+                          aria-pressed={metro.subdivision === s.value}
                           onClick={() => updateMetro({ subdivision: s.value })}
                         >
                           {s.label}
-                        </div>
+                        </button>
                       ))}
                     </div>
                   </div>
@@ -391,13 +393,15 @@ export default function ThreadDetail({ threadId, onBack, onOpenDiagnosis, autoRe
                     <span className="lbl">カウントイン</span>
                     <div className="pill-row" style={{ margin: 0, flex: 1 }}>
                       {[0, 2, 4, 8].map((n) => (
-                        <div
+                        <button
+                          type="button"
                           key={n}
                           className={`pill ${metro.countInBeats === n ? 'active' : ''}`}
+                          aria-pressed={metro.countInBeats === n}
                           onClick={() => updateMetro({ countInBeats: n })}
                         >
                           {n === 0 ? 'なし' : `${n}拍`}
-                        </div>
+                        </button>
                       ))}
                     </div>
                   </div>

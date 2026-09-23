@@ -324,7 +324,7 @@ export default function DiagnosisView({ threadId, takeId, onBack, onRecordAgain,
 
         {/* 締め: 明日の予告 → 「もう 1 回」バー。バーは sticky なのでスクロール領域の最後の子に置く */}
         <NextChallengeForm threadId={threadId} takeId={takeId} />
-        <RecordAgainBar threadId={threadId} onRecordAgain={onRecordAgain} onGoHome={onGoHome} />
+        <RecordAgainBar threadId={threadId} takeId={takeId} onRecordAgain={onRecordAgain} onGoHome={onGoHome} />
       </div>
     </>
   )

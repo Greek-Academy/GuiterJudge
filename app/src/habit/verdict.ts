@@ -1,6 +1,7 @@
 import type { Take, Thread, DiagnosisResult } from '../db'
 import { JITTER_METRIC } from '../components/trendMetrics'
 import { MIN_ONSETS_FOR_GRID } from '../gridTiming'
+import { diagnose } from '../comparison'
 import { daysSince, startOfDay } from './dailyStats'
 
 /**
@@ -94,6 +95,72 @@ function gridOf(t: Pick<Take, 'gridTiming'>) {
   const g = t.gridTiming
   if (!g || !(g.jitterMs >= 0) || g.onsetCount < MIN_ONSETS_FOR_GRID) return null
   return g
+}
+
+/**
+ * 直前比(prev)の診断の「判定源」を 1 か所に決める。
+ *
+ * 保存される診断は 1 テイク 1 件で、お手本(reference)があるスレッドでは reference モードで保存され、
+ * 比較モードを切り替えた(best / reference で再計算した)テイクも prev が残らない。保存済みの prev だけを見ると、
+ * そうしたスレッドでは VersusCard(その場で diagnose していた)には勝敗が出るのに、ゲージ・hero・まとめは判定不能になる。
+ * そこで「保存済み prev があればそれ、無ければ直前の normal テイクとその場で diagnose」を withPrevDiags に集約し、
+ * 判定・ゲージ・hero・まとめ・もう 1 回バーが同じ値を見るようにする。
+ *
+ * 計算結果は「テイク ID + 直前テイク ID」でメモ化する(noteEvents は保存後に書き換えないので、この 2 つで結果が決まる)。
+ * diagnose は 100 音で 0.4ms 程度なので、一覧で全スレッド × 全テイクを埋めても初回だけ数百 ms 以内に収まる。
+ */
+const computedPrevDiagCache = new Map<string, DiagnosisResult>()
+/** メモ化の上限(テイク数の想定を十分超える値)。超えたら捨てて作り直す */
+const COMPUTED_CACHE_MAX = 20_000
+
+function computedPrevDiag(take: Take, prev: Take): DiagnosisResult | undefined {
+  if (!take.noteEvents || !prev.noteEvents) return undefined
+  const key = `${take.id}|${prev.id}`
+  let d = computedPrevDiagCache.get(key)
+  if (!d) {
+    if (computedPrevDiagCache.size >= COMPUTED_CACHE_MAX) computedPrevDiagCache.clear()
+    d = {
+      id: `computed:${key}`,
+      takeId: take.id,
+      comparedToTakeId: prev.id,
+      compareMode: 'prev',
+      ...diagnose(prev.noteEvents, take.noteEvents),
+    }
+    computedPrevDiagCache.set(key, d)
+  }
+  return d
+}
+
+/** withPrevDiags が返した(埋め済みの)Map。二重に埋めないための印 */
+const resolvedMaps = new WeakSet<Map<string, DiagnosisResult>>()
+
+/**
+ * takesAsc の全 normal テイクについて、直前比の診断を埋めた Map を返す。保存済み(compareMode 'prev')があればそれ、
+ * 無ければ直前の normal テイク(同じスレッドで recordedAt が古いものの最後。actions.recomputeDiagnosis の 'prev' と
+ * 同じ定義)とその場で計算した値。初テイク・音符起こしが無いテイクは入らない。
+ * スレッドごとに 1 回走査するので O(テイク数)。購読フック(useThreadTakes.ts)がこれを通した Map を配り、
+ * stabilityGauge / latestOutcomeByThread / summarizeToday / VersusCard などが同じ判定源を見る。
+ * 既に埋めた Map を渡したときはそのまま返す。
+ */
+export function withPrevDiags(takesAsc: Take[], prevDiagByTake: Map<string, DiagnosisResult>): Map<string, DiagnosisResult> {
+  if (resolvedMaps.has(prevDiagByTake)) return prevDiagByTake
+  const out = new Map<string, DiagnosisResult>()
+  for (const [id, d] of prevDiagByTake) if (d.compareMode === 'prev') out.set(id, d)
+  const byThread = new Map<string, Take[]>()
+  for (const t of normalTakesAsc(takesAsc)) {
+    const list = byThread.get(t.threadId)
+    if (list) list.push(t)
+    else byThread.set(t.threadId, [t])
+  }
+  for (const list of byThread.values()) {
+    for (let i = 1; i < list.length; i++) {
+      if (out.has(list[i].id)) continue
+      const d = computedPrevDiag(list[i], list[i - 1])
+      if (d) out.set(list[i].id, d)
+    }
+  }
+  resolvedMaps.add(out)
+  return out
 }
 
 /** 今回テイクを直前テイクと比べる。curDiag / prevDiag は compareMode 'prev' の結果(無ければ undefined) */
@@ -241,8 +308,9 @@ function normalTakesAsc(takes: Take[]): Take[] {
  * それ以外(小さな負け・テンポを落とした回・判定不能)は 0。0〜GAUGE_MAX でクランプ。
  * 判定できたペアが 1 つも無ければ(判定できるテイクが 2 本未満)available: false。
  */
-export function stabilityGauge(takesAsc: Take[], prevDiagByTake: Map<string, DiagnosisResult>): Gauge {
+export function stabilityGauge(takesAsc: Take[], savedPrevDiagByTake: Map<string, DiagnosisResult>): Gauge {
   const takes = normalTakesAsc(takesAsc)
+  const prevDiagByTake = withPrevDiags(takes, savedPrevDiagByTake)
   let value = 0
   let judged = 0
   let basis: Gauge['basis'] = 'none'
@@ -265,8 +333,9 @@ export function stabilityGauge(takesAsc: Take[], prevDiagByTake: Map<string, Dia
  * VersusCard が 3 以上のとき勝敗マークを出さずに文言を切り替えるために使う。
  * 判定できないテイクに当たったら連敗は途切れたものとして数えるのをやめる。
  */
-export function consecutiveJitterLosses(takesAsc: Take[], prevDiagByTake: Map<string, DiagnosisResult>, upToTakeId: string): number {
+export function consecutiveJitterLosses(takesAsc: Take[], savedPrevDiagByTake: Map<string, DiagnosisResult>, upToTakeId: string): number {
   const takes = normalTakesAsc(takesAsc)
+  const prevDiagByTake = withPrevDiags(takes, savedPrevDiagByTake)
   let idx = takes.findIndex((t) => t.id === upToTakeId)
   if (idx < 0) idx = takes.length - 1
   let losses = 0
@@ -324,8 +393,9 @@ export function pickDiscovery(args: {
   verdict: Verdict
   prevDiagByTake: Map<string, DiagnosisResult>
 }): Discovery | null {
-  const { cur, verdict, prevDiagByTake } = args
+  const { cur, verdict } = args
   const takes = normalTakesAsc(args.takesAsc)
+  const prevDiagByTake = withPrevDiags(takes, args.prevDiagByTake)
   const curIdx = takes.findIndex((t) => t.id === cur.id)
   const earlier = curIdx >= 0 ? takes.slice(0, curIdx) : takes.filter((t) => t.recordedAt < cur.recordedAt)
   const curJ = jitterValueOf(cur, prevDiagByTake)
@@ -407,7 +477,8 @@ export function pickDiscovery(args: {
  * hero 選定・まとめ用: 各スレッドの直近テイクの判定(WP-B / WP-C が使う)。
  * 1 スレッド 1 値。jitter 項目があればその勝敗、無ければ tally の多数決(同数は draw)。判定不能は 'n/a'
  */
-export function latestOutcomeByThread(takesAsc: Take[], prevDiagByTake: Map<string, DiagnosisResult>): Map<string, Outcome | 'n/a'> {
+export function latestOutcomeByThread(takesAsc: Take[], savedPrevDiagByTake: Map<string, DiagnosisResult>): Map<string, Outcome | 'n/a'> {
+  const prevDiagByTake = withPrevDiags(takesAsc, savedPrevDiagByTake)
   const byThread = new Map<string, Take[]>()
   for (const t of normalTakesAsc(takesAsc)) {
     const list = byThread.get(t.threadId)

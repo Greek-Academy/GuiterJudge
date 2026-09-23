@@ -1,7 +1,6 @@
 import { useMemo } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import db from '../db'
-import { diagnose } from '../comparison'
 import { useThreadTakesAsc } from '../habit/useThreadTakes'
 import {
   judgeAgainstPrev,
@@ -51,26 +50,10 @@ export default function VersusCard({ threadId, takeId }: Props) {
     const older = takesAsc.filter((t) => t.id !== cur.id && t.recordedAt < cur.recordedAt)
     return older[older.length - 1]
   }, [cur, takesAsc])
-  const prevPrev = useMemo(() => {
-    if (!prev || !takesAsc) return undefined
-    const older = takesAsc.filter((t) => t.id !== prev.id && t.recordedAt < prev.recordedAt)
-    return older[older.length - 1]
-  }, [prev, takesAsc])
-
-  // 直前比(prev)の診断。お手本があるスレッドでは保存結果が reference モードで prev が保存されていないので、
-  // 無ければその場で計算する(diagnose は音符列から決定的に出る純関数。数十音なら一瞬)
-  const curDiag = useMemo(() => {
-    if (!cur || !prev || !prevDiagByTake) return undefined
-    const saved = prevDiagByTake.get(cur.id)
-    if (saved) return saved
-    return cur.noteEvents && prev.noteEvents ? diagnose(prev.noteEvents, cur.noteEvents) : undefined
-  }, [cur, prev, prevDiagByTake])
-  const prevDiag = useMemo(() => {
-    if (!prev || !prevPrev || !prevDiagByTake) return undefined
-    const saved = prevDiagByTake.get(prev.id)
-    if (saved) return saved
-    return prev.noteEvents && prevPrev.noteEvents ? diagnose(prevPrev.noteEvents, prev.noteEvents) : undefined
-  }, [prev, prevPrev, prevDiagByTake])
+  // 直前比(prev)の診断。保存済みが無いテイク(お手本ありスレッドなど)は useThreadTakesAsc が
+  // verdict.withPrevDiags でその場の計算値を埋めて返すので、ここは引くだけ(ゲージ・hero・まとめと同じ判定源)
+  const curDiag = cur ? prevDiagByTake?.get(cur.id) : undefined
+  const prevDiag = prev ? prevDiagByTake?.get(prev.id) : undefined
 
   const verdict = useMemo(() => (cur ? judgeAgainstPrev({ cur, prev, curDiag, prevDiag }) : null), [cur, prev, curDiag, prevDiag])
   const discovery = useMemo(

@@ -1,6 +1,6 @@
 import type { Thread, Take, DiagnosisResult } from '../db'
 import { todaysHabitTakes } from './dailyStats'
-import { judgeAgainstPrev, jitterValueOf, FLAT_JITTER_MS } from './verdict'
+import { judgeAgainstPrev, jitterValueOf, withPrevDiags, FLAT_JITTER_MS } from './verdict'
 
 // 「今日のまとめ」(C11)の材料を作る純関数。React にも Dexie にも依存しない。
 //
@@ -33,11 +33,12 @@ export function summarizeToday(args: {
   threads: Thread[]
   /** recordedAt 昇順。role は混在してよい */
   takesAsc: Take[]
-  /** takeId → compareMode 'prev' の保存済み診断 */
+  /** takeId → compareMode 'prev' の保存済み診断。保存が無いテイクは verdict.withPrevDiags がその場で埋める */
   prevDiagByTake: Map<string, DiagnosisResult>
   now?: number
 }): DaySummary | null {
-  const { threads, takesAsc, prevDiagByTake } = args
+  const { threads, takesAsc } = args
+  const prevDiagByTake = withPrevDiags(takesAsc, args.prevDiagByTake)
   const now = args.now ?? Date.now()
   const today = todaysHabitTakes(takesAsc, now)
   if (today.length === 0) return null

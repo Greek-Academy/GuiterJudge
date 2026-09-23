@@ -98,7 +98,9 @@ label.secondary {
   padding: 7px 8px;
   border-radius: 999px;
   border: 1px solid var(--gridline);
+  font-family: inherit;
   font-size: 11px;
+  line-height: inherit;
   cursor: pointer;
   background: var(--surface-1);
   color: var(--text-secondary);
