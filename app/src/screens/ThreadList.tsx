@@ -71,10 +71,11 @@ export default function ThreadList({ onOpenThread, onRecordNow, onOpenSongThroug
 
   // 「今日の一本」の材料。全スレッドのテイクと直前比の診断を 1 度だけ購読し、判定(verdict)→ 候補選定(pickToday)は純関数。
   // 予告は localStorage なので useNextChallenge で購読して、予告する/取り消すの直後に hero が追従するようにする
-  const habit = useAllHabitData()
+  // useAllHabitData は毎描画で新しいオブジェクトを返すので、useMemo の依存には中身の 3 つを個別に入れる
+  const { threads: habitThreads, takesAsc: habitTakesAsc, prevDiagByTake: habitPrevDiagByTake } = useAllHabitData()
   const challenge = useNextChallenge()
   const heroState = useMemo(() => {
-    const { threads, takesAsc, prevDiagByTake } = habit
+    const [threads, takesAsc, prevDiagByTake] = [habitThreads, habitTakesAsc, habitPrevDiagByTake]
     if (!threads || !takesAsc || !prevDiagByTake) return undefined
     const outcomeByThread = latestOutcomeByThread(takesAsc, prevDiagByTake)
     const gaugeByThread = new Map<string, number>()
@@ -85,13 +86,13 @@ export default function ThreadList({ onOpenThread, onRecordNow, onOpenSongThroug
     }
     const due = challenge && isChallengeDueToday(challenge) ? challenge : null
     return pickToday({ threads, takesAsc, outcomeByThread, gaugeByThread, challenge: due, prevDiagByTake })
-  }, [habit, challenge])
+  }, [habitThreads, habitTakesAsc, habitPrevDiagByTake, challenge])
   // 一覧カードの「N テイク」。音符起こしに成功した normal テイクの数(ゲージや hero と同じ母集団)
   const takeCountByThread = useMemo(() => {
     const m = new Map<string, number>()
-    for (const t of habit.takesAsc ?? []) m.set(t.threadId, (m.get(t.threadId) ?? 0) + 1)
+    for (const t of habitTakesAsc ?? []) m.set(t.threadId, (m.get(t.threadId) ?? 0) + 1)
     return m
-  }, [habit.takesAsc])
+  }, [habitTakesAsc])
 
   function beginCompose(type: 'phrase' | 'songThrough') {
     setComposing({ type })

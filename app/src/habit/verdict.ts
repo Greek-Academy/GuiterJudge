@@ -324,7 +324,7 @@ export function pickDiscovery(args: {
   verdict: Verdict
   prevDiagByTake: Map<string, DiagnosisResult>
 }): Discovery | null {
-  const { thread, cur, verdict, prevDiagByTake } = args
+  const { cur, verdict, prevDiagByTake } = args
   const takes = normalTakesAsc(args.takesAsc)
   const curIdx = takes.findIndex((t) => t.id === cur.id)
   const earlier = curIdx >= 0 ? takes.slice(0, curIdx) : takes.filter((t) => t.recordedAt < cur.recordedAt)
@@ -382,13 +382,13 @@ export function pickDiscovery(args: {
     }
   }
 
-  // 5) 初テイクからの日数と差
+  // 5) 初テイクからの日数と差。日数は直前に出す日付(初テイクの recordedAt)と同じ基準で数える
+  //    (スレッド作成日で数えると「初テイク(9/13、60 日前)」のように日付と日数が食い違う)
   if (curJ && comparable.length >= 1) {
     const first = comparable[0]
     const days = daysSince(first.take.recordedAt, cur.recordedAt)
     if (days >= 1) {
-      const since = Math.max(days, daysSince(thread.createdAt, cur.recordedAt))
-      candidates.push({ kind: 'firstTake', text: `初テイク(${md(first.take.recordedAt)}、${since} 日前)より ${deltaPhrase(first.j.value, curJ.value)}` })
+      candidates.push({ kind: 'firstTake', text: `初テイク(${md(first.take.recordedAt)}、${days} 日前)より ${deltaPhrase(first.j.value, curJ.value)}` })
     }
   }
 
