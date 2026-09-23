@@ -1,0 +1,917 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0D1017">
+<title>F4 拍のループ — モック</title>
+<style>
+:root{
+  --bg:#0D1017; --surface:#151A24; --surface2:#1A202C; --band:#1F2533; --band-edge:#3A4358;
+  --pillar:#2D3142; --beat1:#FFB000; --beat:#4F5D75; --on-beat1:#0D1017;
+  --cur:#3FA7D6; --cur-edge:#FFFFFF; --past:#8A8F9C; --text:#E9ECF2; --text2:#B4B9C6; --muted:#8A8F9C;
+  --line:#262C3A; --btn:#3FA7D6; --on-btn:#0D1017; --btn2:#232A38; --pill-num:#B4B9C6;
+  --font:"Barlow Condensed","Avenir Next Condensed","Hiragino Sans","Hiragino Kaku Gothic ProN",sans-serif;
+  --jp:"Hiragino Sans","Hiragino Kaku Gothic ProN",sans-serif;
+  color-scheme:dark;
+}
+html.light{
+  --bg:#F1EFF6; --surface:#FFFFFF; --surface2:#F8F7FB; --band:#E2DFEA; --band-edge:#B9B4C8;
+  --pillar:#D9D6E3; --beat1:#E09A00; --beat:#A29DB8; --on-beat1:#14121B;
+  --cur:#1F6FB0; --cur-edge:#14121B; --past:#5F5B6E; --text:#14121B; --text2:#4A4658; --muted:#5F5B6E;
+  --line:#DEDAE7; --btn:#1F6FB0; --on-btn:#FFFFFF; --btn2:#E6E3EE; --pill-num:#4A4658;
+  color-scheme:light;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--bg);color:var(--text);font-family:var(--jp);-webkit-font-smoothing:antialiased}
+body{min-height:100dvh;overflow-x:hidden}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;-webkit-tap-highlight-color:transparent}
+button:focus-visible{outline:3px solid var(--cur);outline-offset:2px}
+.num{font-family:var(--font);font-variant-numeric:tabular-nums;font-weight:600;letter-spacing:.01em}
+.screen{display:none;min-height:100dvh}
+.screen.on{display:block}
+.pad{padding:0 20px}
+.muted{color:var(--text2)}
+.small{font-size:13px;line-height:1.6;color:var(--text2)}
+.note{font-size:12px;line-height:1.65;color:var(--text2);border-left:2px solid var(--band-edge);padding:2px 0 2px 10px;margin:18px 0 0}
+h2.sec{font-size:13px;font-weight:600;color:var(--text2);letter-spacing:.08em;display:flex;align-items:center;gap:10px;margin:26px 0 10px}
+h2.sec::after{content:"";flex:1;height:1px;background:var(--line)}
+h2.sec .act{order:3;font-size:13px;color:var(--text);letter-spacing:0;font-weight:500;padding:0 6px;min-height:36px;border-radius:8px}
+.leds{display:inline-flex;gap:3px;vertical-align:middle}
+.led{width:9px;height:9px;background:var(--pillar);display:inline-block}
+.led.f{background:var(--cur)}
+.led.full{background:var(--beat1)}
+
+/* ---------- top bar ---------- */
+.topbar{display:flex;align-items:center;gap:6px;height:60px;padding:0 8px 0 4px;position:sticky;top:0;background:var(--bg);z-index:5}
+.back{display:flex;align-items:center;gap:2px;height:48px;min-width:48px;padding:0 12px 0 8px;border-radius:12px;font-size:16px;color:var(--text)}
+.back svg{width:22px;height:22px}
+.topbar .ttl{flex:1;font-size:15px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.iconbtn{width:48px;height:48px;border-radius:12px;display:grid;place-items:center;color:var(--text2)}
+.iconbtn svg{width:22px;height:22px}
+
+/* ---------- home ---------- */
+.h-head{display:flex;align-items:flex-end;justify-content:space-between;padding:20px 12px 0 20px}
+.h-head h1{font-size:30px;font-weight:700;letter-spacing:.02em}
+.h-head h1 .date{font-size:18px;font-weight:500;color:var(--text2);margin-left:8px}
+.h-meta{padding:6px 20px 0;font-size:14px;color:var(--text2)}
+.menu{list-style:none;display:flex;flex-direction:column;gap:8px}
+.mi{display:grid;grid-template-columns:40px 1fr 28px;align-items:center;width:100%;text-align:left;background:var(--surface);border-radius:8px;padding:14px 8px 14px 12px;min-height:88px;position:relative}
+.mi.first{background:var(--surface2);box-shadow:inset 0 0 0 1.5px var(--cur)}
+.mi .ord{font-family:var(--font);font-size:30px;font-weight:700;color:var(--text2);line-height:1}
+.mi.first .ord{color:var(--cur)}
+.mi .nm{font-size:17px;font-weight:600;line-height:1.35}
+.mi .mt{font-size:13px;color:var(--text2);margin-top:3px}
+.mi .st{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:14px;color:var(--text)}
+.mi .st .sep{color:var(--text2)}
+.mi .chev{color:var(--text2);justify-self:end}
+.mi .tag{font-size:11px;font-weight:600;color:var(--cur);letter-spacing:.06em;margin-left:6px;vertical-align:2px}
+.startwrap{padding:18px 20px 0}
+.startbtn{display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;height:80px;border-radius:8px;background:var(--btn);color:var(--on-btn);gap:3px}
+.startbtn .l1{font-size:22px;font-weight:700;letter-spacing:.04em}
+.startbtn .l2{font-size:13px;font-weight:500;opacity:.92}
+.beatrow{display:flex;justify-content:center;gap:4px;margin:0 0 10px}
+.beatrow i{width:18px;height:6px;background:var(--pillar)}
+.beatrow i.b1{background:var(--beat1)}
+.armed{display:flex;align-items:center;justify-content:center;gap:8px;font-size:12px;color:var(--text2);margin-top:10px}
+.armed i{width:8px;height:8px;border:1.5px solid var(--text2);border-radius:50%;display:inline-block}
+.others{display:flex;flex-direction:column;gap:2px}
+.orow{display:grid;grid-template-columns:1fr auto 20px;align-items:center;gap:10px;width:100%;text-align:left;min-height:64px;padding:8px 4px;border-bottom:1px solid var(--line)}
+.orow .nm{font-size:15px;font-weight:600}
+.orow .mt{font-size:12px;color:var(--text2);margin-top:2px}
+.orow .v{font-size:14px;color:var(--text)}
+.linkrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.chipbtn{min-height:44px;padding:0 14px;border-radius:8px;background:var(--btn2);font-size:14px;display:inline-flex;align-items:center;gap:6px}
+.foot{display:flex;gap:18px;justify-content:center;padding:26px 0 40px;font-size:12px;color:var(--text2)}
+.foot button{min-height:40px;color:var(--text2)}
+
+/* ---------- phrase ---------- */
+.p-title{padding:4px 20px 0}
+.p-title h1{font-size:26px;font-weight:700;line-height:1.3}
+.p-title .sub{font-size:13px;color:var(--text2);margin-top:4px}
+.card{background:var(--surface);border-radius:8px;padding:16px}
+.loophead{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+.loophead b{font-size:15px}
+.loopstrip{display:flex;gap:4px;align-items:center}
+.loopstrip i{width:22px;height:12px;background:var(--cur)}
+.loopstrip i.r{background:transparent;box-shadow:inset 0 0 0 2px var(--past)}
+.loopstrip i.c{background:transparent;box-shadow:inset 0 0 0 2px var(--beat1)}
+.loopstrip span{font-size:12px;color:var(--text2);margin-left:6px}
+.stepper{display:grid;grid-template-columns:68px 64px 1fr 64px;align-items:center;gap:8px;min-height:72px;border-top:1px solid var(--line)}
+.stepper:first-of-type{border-top:0}
+.stepper .lb{font-size:15px;color:var(--text2)}
+.stepper .val{text-align:center;font-size:30px;line-height:1}
+.stepper .val small{font-family:var(--jp);font-size:14px;font-weight:500;color:var(--text2);margin-left:3px}
+.sbtn{width:64px;height:64px;border-radius:8px;background:var(--btn2);font-size:30px;font-weight:300;display:grid;place-items:center}
+.chips{display:flex;flex-wrap:wrap;gap:8px;padding-top:12px;border-top:1px solid var(--line)}
+.chips .chipbtn{font-size:13px;padding:0 10px;min-height:44px}
+.chips{gap:6px}
+.chips .chipbtn b{font-family:var(--font);font-size:16px}
+.sess{display:grid;grid-template-columns:44px 1fr auto 36px;align-items:center;gap:10px;min-height:60px;border-bottom:1px solid var(--line);padding:4px 0}
+.sess .d{font-size:14px;font-family:var(--font);font-weight:600}
+.sess .bars{display:flex;align-items:flex-end;gap:2px;height:28px}
+.sess .bars i{width:9px;background:var(--past);border-radius:2px 2px 0 0}
+.sess .bars i.nd{background:transparent;box-shadow:inset 0 0 0 1.5px var(--past);height:6px!important}
+.sess .v{text-align:right;font-size:13px;color:var(--text2);line-height:1.35}
+.sess .v b{font-family:var(--font);font-size:18px;color:var(--text);font-weight:600}
+.sess .nd-note{grid-column:2/5;font-size:12px;color:var(--text2);margin-top:-6px;padding-bottom:6px}
+.chart{width:100%;height:auto;display:block}
+.chart text{font-family:var(--font);font-variant-numeric:tabular-nums}
+.gauge-row{display:flex;align-items:center;gap:10px;font-size:14px}
+.gauge-row .leds .led{width:14px;height:14px}
+.linkbtn{min-height:44px;font-size:14px;color:var(--cur);text-decoration:underline;text-underline-offset:3px;padding:0 2px}
+.sticky-cta{position:sticky;bottom:0;padding:12px 20px calc(12px + env(safe-area-inset-bottom));background:linear-gradient(to top,var(--bg) 70%,transparent)}
+.cta{width:100%;height:72px;border-radius:8px;background:var(--btn);color:var(--on-btn);font-size:20px;font-weight:700;letter-spacing:.03em}
+details.tbl{margin-top:10px;font-size:13px;color:var(--text2)}
+details.tbl summary{min-height:44px;display:flex;align-items:center;cursor:pointer;list-style:none;color:var(--text)}
+details.tbl summary::-webkit-details-marker{display:none}
+details.tbl summary::before{content:"▸";margin-right:6px;color:var(--text2)}
+details.tbl[open] summary::before{content:"▾"}
+details.tbl table{width:100%;border-collapse:collapse;margin-top:6px}
+details.tbl td,details.tbl th{padding:6px 4px;border-bottom:1px solid var(--line);text-align:right;font-variant-numeric:tabular-nums}
+details.tbl th:first-child,details.tbl td:first-child{text-align:left}
+
+/* ---------- rec ---------- */
+#s-rec{height:100dvh;overflow:hidden;display:none;flex-direction:column;background:var(--bg);user-select:none}
+#s-rec.on{display:flex}
+.pillars{flex:1;min-height:280px;display:grid;grid-template-columns:repeat(4,1fr);gap:4px;position:relative}
+.pl{position:relative;background:var(--pillar);display:flex;align-items:flex-end;justify-content:center;padding-bottom:22px;overflow:hidden;transition:opacity .12s}
+.pl .glow{position:absolute;inset:0;background:var(--beat);opacity:0}
+.pl.b1 .glow{background:var(--beat1)}
+.pl .bn{position:relative;font-family:var(--font);font-weight:700;font-size:180px;line-height:.8;color:var(--pill-num)}
+.pl.lit .bn{color:var(--text)}
+.pl.b1.lit .bn{color:var(--on-beat1)}
+.pl.gone{opacity:.0;}
+.pl.gone::after{content:"";position:absolute;inset:0;box-shadow:inset 0 0 0 2px var(--pillar)}
+.pillars .restlbl{position:absolute;left:0;right:0;top:26px;text-align:center;font-size:40px;font-weight:700;letter-spacing:.3em;color:var(--text);display:none}
+.pillars.rest .restlbl{display:block}
+.pillars.count .restlbl{display:block}
+.pillars.rest .pl .bn{opacity:.55}
+.rstat{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:12px;height:64px;padding:0 16px;border-bottom:1px solid var(--line)}
+.rstat .t{font-size:32px;display:flex;align-items:center;gap:8px}
+.rstat .t i{width:14px;height:14px;border-radius:50%;background:var(--cur);display:inline-block}
+.rstat .mode{display:flex;align-items:center;justify-content:center;gap:10px;font-size:32px;font-weight:700}
+.rstat .mode .leds{gap:5px}
+.rstat .mode .led{width:16px;height:16px;background:var(--pillar)}
+.rstat .mode .led.p{background:transparent;box-shadow:inset 0 0 0 2.5px var(--cur)}
+.rstat .mode .led.r{background:transparent;box-shadow:inset 0 0 0 2.5px var(--past);border-radius:50%}
+.rstat .mode .led.p.now{background:var(--cur);box-shadow:0 0 0 2px var(--cur-edge)}
+.rstat .mode .led.r.now{background:var(--past);box-shadow:0 0 0 2px var(--cur-edge)}
+.rstat .bpm{font-size:32px}
+.lanes{padding:6px 12px 0;display:flex;flex-direction:column;gap:6px}
+.lane{display:grid;grid-template-columns:40px 1fr auto;align-items:center;gap:10px;height:56px;padding:0 14px 0 10px;border-radius:8px;background:var(--surface)}
+.lane .n{font-family:var(--font);font-size:32px;font-weight:700;color:var(--past);text-align:center}
+.lane .bar{height:14px;border-radius:0 4px 4px 0;background:var(--past);opacity:.9}
+.lane .ms{font-size:36px;color:var(--text);line-height:1}
+.lane .ms small{font-size:32px;color:var(--text2);margin-left:2px;font-weight:500}
+.lane.cur{background:var(--surface2);box-shadow:inset 0 0 0 2px var(--cur-edge)}
+.lane.cur .n{color:var(--cur)}
+.lane .play{grid-column:2/4;font-size:32px;font-weight:700;color:var(--cur);letter-spacing:.04em}
+.lane.next{background:transparent;box-shadow:inset 0 0 0 2px var(--line)}
+.lane.next .play{color:var(--text2);font-weight:600}
+.lane.latest .bar{background:var(--cur)}
+.lane.latest .n{color:var(--text)}
+.lane.pending .ms{color:var(--text2)}
+.lane.fresh{animation:write .45s ease-out}
+@keyframes write{from{background:var(--band-edge)}to{background:var(--surface)}}
+.verdict{font-size:32px;font-weight:700;padding:0 10px 2px 60px;line-height:44px;height:44px;white-space:nowrap;color:var(--text)}
+.rfoot{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px calc(12px + env(safe-area-inset-bottom)) 16px;margin-top:auto}
+.rfoot .hint{font-size:32px;color:var(--text2);white-space:nowrap}
+.rfoot .next{height:64px;padding:0 18px;border-radius:8px;background:var(--btn2);font-size:32px;font-weight:700;white-space:nowrap}
+@media (prefers-reduced-motion:reduce){.pl .glow{transition:none}.lane.fresh{animation:none}}
+
+/* ---------- sheet / toast ---------- */
+.scrim{position:fixed;inset:0;background:rgba(5,7,12,.62);display:none;z-index:40}
+.scrim.on{display:block}
+.sheet{position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-radius:16px 16px 0 0;padding:22px 20px calc(20px + env(safe-area-inset-bottom));z-index:41;transform:translateY(105%);transition:transform .22s ease-out}
+.sheet.on{transform:none}
+.sheet h3{font-size:22px;margin-bottom:6px}
+.sheet p{font-size:14px;color:var(--text2);line-height:1.6;margin-bottom:14px}
+.sheet .sb{display:block;width:100%;min-height:64px;border-radius:8px;background:var(--btn2);font-size:18px;font-weight:600;margin-top:8px}
+.sheet .sb.pri{background:var(--btn);color:var(--on-btn)}
+.toast{position:fixed;left:12px;right:12px;bottom:92px;background:var(--text);color:var(--bg);border-radius:8px;min-height:56px;padding:0 8px 0 16px;display:none;align-items:center;justify-content:space-between;z-index:45;font-size:15px}
+.toast.on{display:flex}
+.toast button{min-height:48px;padding:0 12px;font-weight:700;color:var(--bg);text-decoration:underline}
+
+/* ---------- diag ---------- */
+.d-title{padding:2px 20px 0}
+.d-title h1{font-size:24px;font-weight:700}
+.d-title .sub{font-size:13px;color:var(--text2);margin-top:3px}
+.lanesd{position:relative;margin:16px 0 0;padding:0 0 0 0}
+.lanesd{padding-top:22px}
+.bandlbl{position:absolute;top:0;transform:translateX(-50%);font-size:12px;color:var(--text);white-space:nowrap}
+.pmline{position:absolute;top:22px;bottom:26px;width:0;border-left:1.5px solid var(--past);z-index:1}
+.pmline span{position:absolute;bottom:-22px;left:0;transform:translateX(-50%);font-size:11px;color:var(--text);white-space:nowrap;font-family:var(--font);background:var(--bg);padding:0 3px}
+.lanesd .bandcol{position:absolute;top:22px;bottom:26px;background:var(--band);box-shadow:inset 1px 0 0 var(--band-edge),inset -1px 0 0 var(--band-edge)}
+.dl{position:relative;z-index:2;display:grid;grid-template-columns:34px 1fr 72px 40px;align-items:center;height:50px;gap:0}
+.dl .n{font-family:var(--font);font-size:22px;font-weight:700;color:var(--past);text-align:center}
+.dl .trk{position:relative;height:50px}
+.dl .trk .bar{position:absolute;left:0;top:18px;height:14px;background:var(--cur);border-radius:0 4px 4px 0}
+.dl .trk .tag{position:absolute;top:34px;font-size:11px;color:var(--text2);white-space:nowrap}
+.dl .ms{text-align:right;font-size:26px;line-height:1}
+.dl .ms small{font-size:14px;color:var(--text2);font-weight:500;margin-left:1px}
+.dl .more{width:40px;height:44px;display:grid;place-items:center;color:var(--text2);font-size:20px;letter-spacing:1px}
+.dl.gone .bar{background:transparent;box-shadow:inset 0 0 0 1.5px var(--past)}
+.dl.gone .ms{text-decoration:line-through;color:var(--text2)}
+.axis{position:relative;height:26px;margin-left:34px;margin-right:112px;border-top:1px solid var(--line)}
+.axis span{position:absolute;top:5px;font-size:11px;color:var(--text2);transform:translateX(-50%);font-family:var(--font)}
+.sway{margin-top:14px;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.sway .k{font-size:15px;color:var(--text2)}
+.sway .v{font-size:36px;line-height:1}
+.sway .v small{font-size:18px;color:var(--text2);margin-left:2px;font-family:var(--jp);font-weight:500}
+.cmp{margin-top:14px}
+.cmp h3{font-size:14px;color:var(--text2);font-weight:600;margin-bottom:8px}
+.crow{display:grid;grid-template-columns:96px 1fr auto;align-items:center;gap:8px;min-height:48px;border-top:1px solid var(--line)}
+.crow:first-of-type{border-top:0}
+.crow .k{font-size:13px;color:var(--text2);line-height:1.35}
+.crow .v{font-size:24px;white-space:nowrap}
+.crow .v .ar{font-family:var(--jp);font-size:14px;color:var(--text2);margin:0 5px;font-weight:400}
+.crow .v small{font-size:13px;color:var(--text2);font-family:var(--jp);font-weight:500}
+.crow .v .p{color:var(--text2)}
+.badge{font-size:13px;font-weight:600;padding:5px 9px;border-radius:6px;white-space:nowrap;box-shadow:inset 0 0 0 1.5px var(--band-edge);color:var(--text)}
+.badge.flat{background:var(--band)}
+.badge.chg{box-shadow:inset 0 0 0 1.5px var(--text2)}
+.find{margin-top:12px;font-size:14px;line-height:1.6;padding:10px 12px;border-radius:8px;background:var(--band)}
+.dbar{position:fixed;left:0;right:0;bottom:0;display:grid;grid-template-columns:1fr 1.25fr;gap:8px;padding:10px 12px calc(10px + env(safe-area-inset-bottom));background:var(--bg);border-top:1px solid var(--line);z-index:6}
+.dbar button{height:64px;border-radius:8px;font-size:16px;font-weight:700;background:var(--btn2);line-height:1.25}
+.dbar button.pri{background:var(--btn);color:var(--on-btn)}
+.dbar button small{display:block;font-size:12px;font-weight:500;opacity:.9}
+.spacer{height:110px}
+.listen{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.listen button{min-height:56px;border-radius:8px;background:var(--btn2);font-size:14px;font-weight:600}
+.listen button b{font-family:var(--font);font-size:17px}
+
+/* ---------- extra (lap detail) ---------- */
+.seg{display:grid;grid-template-columns:repeat(3,1fr);background:var(--btn2);border-radius:8px;padding:3px;gap:3px}
+.seg button{min-height:44px;border-radius:6px;font-size:14px;font-weight:600;color:var(--text2)}
+.seg button[aria-pressed=true]{background:var(--surface);color:var(--text);box-shadow:inset 0 0 0 1.5px var(--cur)}
+.seg button:disabled{opacity:1;color:var(--muted);font-weight:500}
+.clockwrap{position:relative;margin:6px auto 0;width:350px;max-width:100%}
+.clock text{font-family:var(--font)}
+.beats{margin-top:6px}
+.brow2{padding:8px 0 4px;border-top:1px solid var(--line)}
+.brow2:nth-child(2){border-top:0}
+.brow2 .bh{display:flex;align-items:baseline;gap:10px;margin-bottom:2px}
+.brow2 .k{font-size:13px;color:var(--text2);width:44px}
+.brow2 .o{font-size:20px;width:52px;text-align:right}
+.brow2 .o small{font-size:12px;color:var(--text2);font-weight:500}
+.brow2 .w{font-size:15px;font-weight:600}
+.brow2 .x{font-size:12px;color:var(--text2);margin-left:auto}
+.axis2{display:flex;justify-content:space-between;font-size:11px;color:var(--text2);padding:2px 0 0}
+.brow{display:grid;grid-template-columns:62px 60px 1fr;align-items:center;min-height:40px;border-top:1px solid var(--line);font-size:14px}
+.brow:first-child{border-top:0}
+.brow .k{color:var(--text2);font-size:13px}
+.brow .o{font-family:var(--font);font-size:19px;font-weight:600;text-align:right;padding-right:12px}
+.brow .w{font-weight:600}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px}
+.stat{background:var(--surface);border-radius:8px;padding:10px 12px}
+.stat .k{font-size:11px;color:var(--text2)}
+.stat .v{font-size:24px;margin-top:2px}
+.stat .v small{font-size:13px;color:var(--text2);font-family:var(--jp);font-weight:500}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--text2);margin-top:6px}
+.legend span{display:inline-flex;align-items:center;gap:5px}
+.sw{width:16px;height:8px;display:inline-block;border-radius:2px}
+
+/* ---------- dev chrome ---------- */
+#dev{position:fixed;left:8px;bottom:8px;z-index:60;display:flex;gap:4px;background:rgba(0,0,0,.55);padding:4px;border-radius:10px}
+#dev button{font-size:11px;color:#fff;padding:6px 8px;border-radius:7px;background:rgba(255,255,255,.12)}
+html.nochrome #dev{display:none}
+</style>
+</head>
+<body>
+
+<!-- ======================= HOME ======================= -->
+<main id="s-home" class="screen" aria-label="今日の練習">
+  <div class="h-head">
+    <h1>今日の練習<span class="date num">9/23(火)</span></h1>
+    <button class="iconbtn" aria-label="メニュー(バックアップ・検証・デモデータ)"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg></button>
+  </div>
+  <p class="h-meta">前のセッション <span class="num">9/22</span> · <span class="num">2</span> 本 · <span class="num">11</span> 周</p>
+
+  <div class="pad">
+    <h2 class="sec">献立<button class="act" data-toast="長押しで並べ替え、左にスワイプで差し替え(モック)">並べ替え · 差し替え</button></h2>
+    <ol class="menu" id="menu"></ol>
+  </div>
+
+  <div class="startwrap">
+    <div class="beatrow" aria-hidden="true" id="homebeat"><i class="b1"></i><i></i><i></i><i></i></div>
+    <button class="startbtn" data-go="rec" data-count="1">
+      <span class="l1">▶ セッションを始める</span>
+      <span class="l2">1 本目 · 16分のオルタネイト · 弾く 2 / 休む 2 小節</span>
+    </button>
+    <p class="armed"><i></i>マイクは許可済み。押すとすぐカウントが始まります</p>
+  </div>
+
+  <div class="pad">
+    <h2 class="sec">ほかのフレーズ</h2>
+    <div class="others">
+      <button class="orow" data-toast="献立に入れる / 開く(モック)">
+        <span><span class="nm">G→C→D→G のストローク</span><span class="mt" style="display:block">和音の練習 · ♩=72 · 前回 昨日</span></span>
+        <span class="v"><span class="leds" aria-hidden="true"><i class="led f"></i><i class="led f"></i><i class="led"></i><i class="led"></i><i class="led"></i></span> <span class="num">16</span>ms</span>
+        <span class="muted">›</span>
+      </button>
+    </div>
+    <div class="linkrow">
+      <button class="chipbtn" data-toast="新しいフレーズ(モック)">+ 新しいフレーズ</button>
+      <button class="chipbtn" data-toast="解決済み 2 本(モック)">解決済み <span class="num">2</span> ›</button>
+    </div>
+    <p class="note">ゲージと ms は、同じように弾けているか(一貫性)の指標です。音楽的な正しさではありません。</p>
+  </div>
+  <div class="foot"><button>バックアップ</button><button>デモデータ</button><button>検証(開発者向け)</button></div>
+</main>
+
+<!-- ======================= PHRASE ======================= -->
+<main id="s-phrase" class="screen" aria-label="フレーズ">
+  <div class="topbar">
+    <button class="back" data-back="home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M15 5l-7 7 7 7"/></svg>今日</button>
+    <span class="ttl"></span>
+    <button class="iconbtn" aria-label="フレーズのメニュー"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg></button>
+  </div>
+  <div class="p-title">
+    <h1>16分のオルタネイト</h1>
+    <p class="sub">Amペンタ 5〜8フレット · 単音フレーズ · 献立の 1 本目</p>
+  </div>
+  <div class="pad" style="margin-top:16px">
+    <section class="card" aria-label="ループの設定">
+      <div class="loophead"><b>ループ</b>
+        <span class="loopstrip" aria-label="弾く 2 小節、休む 2 小節、1 周 16.6 秒"><i></i><i></i><i class="r"></i><i class="c"></i><span>1 周 <span class="num">16.6</span> 秒</span></span>
+      </div>
+      <div class="stepper"><span class="lb">弾く</span><button class="sbtn" aria-label="弾く小節を減らす">−</button><span class="val num" aria-live="polite" id="v-play">2<small>小節</small></span><button class="sbtn" aria-label="弾く小節を増やす">+</button></div>
+      <div class="stepper"><span class="lb">休む</span><button class="sbtn" aria-label="休む小節を減らす">−</button><span class="val num" id="v-rest">2<small>小節</small></span><button class="sbtn" aria-label="休む小節を増やす">+</button></div>
+      <div class="stepper"><span class="lb">テンポ</span><button class="sbtn" aria-label="テンポを下げる">−</button><span class="val num" id="v-bpm">♩=58</span><button class="sbtn" aria-label="テンポを上げる">+</button></div>
+      <div class="chips">
+        <button class="chipbtn">音価 <b>16分</b></button>
+        <button class="chipbtn">拍子 <b>4/4</b></button>
+        <button class="chipbtn">カウント <b>1</b> 小節</button>
+        <button class="chipbtn">最低音 <b>E</b></button>
+        <button class="chipbtn">柱 減光</button>
+      </div>
+      <p class="small" style="margin-top:10px">休みの 2 小節目がそのまま次の周のカウントになります(柱が 4→1 と消えます)。セッション中は画面を消しません。</p>
+    </section>
+
+    <h2 class="sec">過去のセッション<button class="act">すべて <span class="num">5</span> ›</button></h2>
+    <div id="sessions"></div>
+
+    <h2 class="sec">推移(セッションの中央値)</h2>
+    <div id="trend1"></div>
+
+    <h2 class="sec">お手本</h2>
+    <p style="font-size:14px">まだありません</p>
+    <div class="linkrow" style="margin-top:8px">
+      <button class="chipbtn">講師の録音を取り込む</button>
+      <button class="chipbtn">楽譜(MusicXML)</button>
+      <button class="chipbtn">周をお手本にする</button>
+    </div>
+
+    <h2 class="sec">解決</h2>
+    <div class="gauge-row"><span class="leds" aria-label="安定ゲージ 5 目盛り中 4"><i class="led f"></i><i class="led f"></i><i class="led f"></i><i class="led f"></i><i class="led"></i></span><span class="num" style="font-size:18px">4/5</span><span class="muted" style="font-size:13px">満タンで解決候補になります</span></div>
+    <button class="linkbtn" style="margin-top:4px">解決済みにする…(3 つの問いで確かめます)</button>
+    <p class="note">ms は同じように弾けているか(一貫性)の指標です。音楽的な正しさではありません。</p>
+    <div style="height:20px"></div>
+  </div>
+  <div class="sticky-cta"><button class="cta" data-go="rec" data-count="1">▶ このフレーズだけで始める</button></div>
+</main>
+
+<!-- ======================= REC ======================= -->
+<section id="s-rec" class="screen" aria-label="セッション中。画面のどこかをタップで終える">
+  <div class="pillars" id="pillars" aria-hidden="true">
+    <div class="pl b1"><div class="glow"></div><span class="bn">1</span></div>
+    <div class="pl"><div class="glow"></div><span class="bn">2</span></div>
+    <div class="pl"><div class="glow"></div><span class="bn">3</span></div>
+    <div class="pl"><div class="glow"></div><span class="bn">4</span></div>
+    <div class="restlbl" id="restlbl">休む</div>
+  </div>
+  <div class="rstat">
+    <span class="t num" id="r-time" aria-label="経過時間"><i></i>0:53</span>
+    <span class="mode"><span id="r-mode">弾く</span><span class="leds" id="r-leds" aria-hidden="true"><i class="led p now"></i><i class="led p"></i><i class="led r"></i><i class="led r"></i></span></span>
+    <span class="bpm num">♩58</span>
+  </div>
+  <div class="lanes" id="r-lanes" aria-live="polite"></div>
+  <div class="rfoot">
+    <span class="hint">タップで終える</span>
+    <button class="next" id="r-next">次へ ▸</button>
+  </div>
+</section>
+
+<!-- ======================= DIAG ======================= -->
+<main id="s-diag" class="screen" aria-label="セッションの結果">
+  <div class="topbar">
+    <button class="back" data-back="home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M15 5l-7 7 7 7"/></svg>今日</button>
+    <span class="ttl">セッションの結果 · 1 / 3 本</span>
+    <button class="iconbtn" aria-label="結果のメニュー"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg></button>
+  </div>
+  <div class="d-title">
+    <h1>16分のオルタネイト</h1>
+    <p class="sub">今日のセッション · <span class="num">6</span> 周 · <span class="num">1:43</span> · ♩=58 · 16分</p>
+  </div>
+  <div class="pad">
+    <div class="lanesd" id="dlanes"></div>
+    <div class="sway" aria-label="今日の揺れ 13 から 16 ミリ秒">
+      <span class="k">今日の揺れ</span><span class="v num">13〜16<small>ms</small></span>
+    </div>
+    <p class="small" style="margin-top:4px">同じように弾いても、この幅は揺れます。帯(±6ms)の中の差は横ばいとして扱います。</p>
+
+    <section class="card cmp" aria-label="前のセッションと">
+      <h3>前のセッション(9/22)と</h3>
+      <div class="crow" aria-label="セッションの中央値 14 ミリ秒、前のセッション 14、横ばい">
+        <span class="k">中央値<br>ばらつき</span>
+        <span class="v num"><span class="p">14</span><span class="ar">→</span>14<small>ms</small></span>
+        <span class="badge flat">横ばい</span>
+      </div>
+    </section>
+
+    <section class="card cmp" aria-label="5 周目と 4 周目">
+      <h3>いちばん小さい周(5 周目)と、その前の周</h3>
+      <div class="crow" aria-label="ばらつき 13 ミリ秒、前の周 14、横ばい">
+        <span class="k">ばらつき</span>
+        <span class="v num"><span class="p">14</span><span class="ar">→</span>13<small>ms</small></span>
+        <span class="badge flat">横ばい</span>
+      </div>
+      <div class="crow" aria-label="音符一致率 92 パーセント、前の周 83、前の周より 9 ポイント高い">
+        <span class="k">音符一致率</span>
+        <span class="v num"><span class="p">83</span><span class="ar">→</span>92<small>%</small></span>
+        <span class="badge chg">9pt 高い</span>
+      </div>
+      <div class="crow" aria-label="弾き忘れと余分 2 個、前の周 6 個、前の周より 4 個少ない">
+        <span class="k">弾き忘れ<br>/ 余分</span>
+        <span class="v num"><span class="p">6</span><span class="ar">→</span>2<small>個</small></span>
+        <span class="badge chg">4 個少ない</span>
+      </div>
+      <p class="find">5 周目の 13ms は、これまでのいちばん小さいばらつき(14ms)と横ばいです。</p>
+    </section>
+
+    <!-- ===== diag bottom ===== -->
+    <div id="diag-bottom-anchor"></div>
+    <h2 class="sec">聴き比べ</h2>
+    <div class="listen">
+      <button>▶ <b>4</b> 周目</button><button>▶ <b>5</b> 周目</button><button>⇄ 交互に</button>
+    </div>
+
+    <h2 class="sec">セッションごとの推移</h2>
+    <div id="trend2"></div>
+
+    <h2 class="sec">安定ゲージ</h2>
+    <div class="gauge-row"><span class="leds" aria-label="安定ゲージ 5 目盛り中 4"><i class="led f"></i><i class="led f"></i><i class="led f"></i><i class="led f"></i><i class="led"></i></span><span class="num" style="font-size:18px">4/5</span><span class="muted" style="font-size:13px">横ばいの日は動きません</span></div>
+
+    <h2 class="sec">周の扱い</h2>
+    <p style="font-size:14px;line-height:1.6">捨てた周はありません。各レーンの <b>⋯</b> から 1 周ずつ捨てられます(5 秒間は元に戻せます)。</p>
+
+    <h2 class="sec">明日</h2>
+    <div class="linkrow" style="margin-top:0">
+      <button class="chipbtn">明日の予告を書く</button>
+      <button class="chipbtn" data-go="home">今日はここまで</button>
+    </div>
+
+    <p class="note">ばらつき・一致率・ゲージは、同じように弾けているか(一貫性)の指標です。音楽的な正しさではありません。</p>
+    <div class="spacer"></div>
+  </div>
+  <div class="dbar">
+    <button data-go="extra">5 周目を詳しく<small>拍の時計 · ピアノロール</small></button>
+    <button class="pri" data-go="rec" data-count="1">▶ 次のフレーズ<small>2 本目 · F→B♭ の押さえ替え</small></button>
+  </div>
+</main>
+
+<!-- ======================= EXTRA: lap detail ======================= -->
+<main id="s-extra" class="screen" aria-label="1 周の詳細">
+  <div class="topbar">
+    <button class="back" data-back="diag"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M15 5l-7 7 7 7"/></svg>セッション</button>
+    <span class="ttl">5 周目 · 16分のオルタネイト</span>
+  </div>
+  <div class="pad">
+    <div class="seg" role="group" aria-label="比べる相手">
+      <button aria-pressed="true">前の周</button>
+      <button aria-pressed="false">今日いちばん</button>
+      <button aria-pressed="false" disabled>お手本 なし</button>
+    </div>
+    <div class="clockwrap" id="clock"></div>
+    <div class="legend" style="justify-content:center;margin-top:0">
+      <span><i class="sw" style="background:var(--cur)"></i>この周の出だし · 弧</span>
+      <span><i class="sw" style="background:var(--past)"></i>前の周の 1σ の弧</span>
+    </div>
+    <p class="small" style="text-align:center;margin-top:4px">1 周 = 16分 1 マス(259ms)· 真上 = 格子<br>輪は内側から 1〜4 拍目</p>
+
+    <h2 class="sec">拍ごとの位置</h2>
+    <div class="beats" id="beats"></div>
+
+    <div class="stats">
+      <div class="stat" aria-label="テンポの流れ マイナス 0.1 パーセント"><div class="k">テンポの流れ</div><div class="v num">−0.1<small>%</small></div></div>
+      <div class="stat" aria-label="格子の一致度 95 パーセント"><div class="k">格子の一致度</div><div class="v num">95<small>%</small></div></div>
+      <div class="stat"><div class="k">音の数</div><div class="v num">26<small>音</small></div></div>
+    </div>
+
+    <h2 class="sec">ピアノロール</h2>
+    <div id="roll"></div>
+    <div class="legend">
+      <span><i class="sw" style="background:var(--past)"></i>前の周</span>
+      <span><i class="sw" style="background:var(--cur)"></i>この周</span>
+      <span>＋ 余分</span><span>◌ 弾き忘れ</span>
+    </div>
+    <details class="tbl" id="tbl"><summary>表で見る(26 音の出だし)</summary></details>
+
+    <h2 class="sec">聴く</h2>
+    <div class="listen">
+      <button>▶ 前の周</button><button>▶ この周</button><button>⇄ 交互に</button>
+    </div>
+    <div class="linkrow"><button class="chipbtn" data-discard="5">この周を捨てる</button></div>
+    <p class="note">拍の時計とばらつきは、同じように弾けているか(一貫性)の指標です。音楽的な正しさではありません。</p>
+    <div style="height:40px"></div>
+  </div>
+</main>
+
+<div class="scrim" id="scrim"></div>
+<div class="sheet" id="sheet" role="dialog" aria-modal="true"></div>
+<div class="toast" id="toast" role="status"><span id="toast-t"></span><button id="toast-undo">元に戻す</button></div>
+<div id="dev"><button id="dev-theme">ライト/ダーク</button><button id="dev-anim">核を再生</button></div>
+
+<script>
+const DATA = {
+  today: '2026-09-23(火)',
+  threads: [
+    { id: 't1', name: '16分のオルタネイト(Amペンタ 5〜8フレット)', short: '16分のオルタネイト', kind: '単音フレーズ', bpm: 58, grid: '16分', lowest: 'E', gauge: 4, lastMs: 13, last: '昨日', isToday: true, loop:2 },
+    { id: 't2', name: 'F→B♭ の押さえ替え(アルペジオ)', short: 'F→B♭ の押さえ替え', kind: '和音の練習', bpm: 60, gauge: 3, lastMs: 13, last: '昨日', loop:1 },
+    { id: 't3', name: 'G→C→D→G のストローク', short: 'G→C→D→G のストローク', kind: '和音の練習', bpm: 72, gauge: 2, lastMs: 16, last: '昨日' },
+    { id: 't4', name: 'クロマチック上行(基礎練)', short: 'クロマチック上行', kind: '単音フレーズ', bpm: 80, gauge: 2, lastMs: 31, last: '2日前', loop:1 },
+  ],
+  takes: [
+    { no: 5, date: '9/22', ms: 13, match: 92, missExtra: 2 },
+    { no: 4, date: '9/20', ms: 14, match: 83, missExtra: 6 },
+    { no: 3, date: '9/18', ms: 15, match: 81, missExtra: 5 },
+    { no: 2, date: '9/15', ms: 17, match: 76, missExtra: 7 },
+    { no: 1, date: '9/12', ms: 21, match: 70, missExtra: 9 },
+  ],
+  diag: { prevMs: 14, curMs: 13, msVerdict: '横ばい', prevMatch: 83, curMatch: 92, matchVerdict: '前回より高い',
+    prevMissExtra: 6, curMissExtra: 2, missVerdict: '前回より少ない', tempoDiffPct: -0.1, gridFit: 95, notes: 26, gridMs: 259,
+    noiseBandMs: 6, finding: 'これまでのいちばん小さいばらつき(14ms)と横ばい', compareModes: ['直前', '最も安定', 'お手本'] },
+  session: { laps: [16, 15, 14, 14, 13, 14], band: [13, 16], prevSessionMedian: 14 },
+};
+// 過去のセッション(周ごとの ms。null = 判定なし)
+const PAST = [
+  { date:'9/22', laps:[17,15,14,13,14,13] },
+  { date:'9/20', laps:[19,16,14,14] },
+  { date:'9/18', laps:[21,17,15,16,null,15] },
+  { date:'9/15', laps:[22,18,17,17] },
+  { date:'9/12', laps:[25,21,21] },
+];
+const BAND = DATA.diag.noiseBandMs, FLAT = 4;
+const median = a => { const s=a.filter(x=>x!=null).sort((x,y)=>x-y); const m=s.length>>1; return s.length%2?s[m]:Math.round((s[m-1]+s[m])/2); };
+const $ = s => document.querySelector(s);
+const Q = new URLSearchParams(location.search);
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+if (Q.get('theme')==='light') document.documentElement.classList.add('light');
+if (Q.get('chrome')==='0') document.documentElement.classList.add('nochrome');
+
+/* ---------- seeded dummy notes (same seed for all proposals) ---------- */
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+const rnd = mulberry32(20260923);
+const NOTES = [];
+const PITCH = [0,2,3,4,5,4,3,2, 1,3,4,6,7,6,4,3, 0,2,3,4,5,4,3,2, 1,0];
+for (let i=0;i<26;i++){
+  let res = Math.round((rnd()*2-1)*10);
+  const beat = Math.floor(i/4)%4;
+  if (beat===2) res += 5;               // 3 拍目は少し後から
+  if (i===6) res = 62;                   // 7 音目だけ +62ms
+  const prev = Math.round((rnd()*2-1)*10) + (beat===2?4:0);
+  NOTES.push({ i, beat, res, prev, pitch:PITCH[i], extra: i===17, miss: i===21 });
+}
+
+/* ---------- router (hash + pushState) ---------- */
+const SCREENS = ['home','phrase','rec','diag','diag-bottom','extra'];
+let current = null;
+function screenOf(h){ return h==='diag-bottom' ? 'diag' : h; }
+function show(h, opts={}){
+  if (!SCREENS.includes(h)) h='home';
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('on'));
+  const id = screenOf(h);
+  $('#s-'+id).classList.add('on');
+  if (current==='rec' && h!=='rec') Rec.stop();
+  current = h;
+  closeSheet();
+  if (id==='rec') Rec.enter(opts);
+  if (h==='diag-bottom') requestAnimationFrame(()=>{ const a=$('#diag-bottom-anchor'); window.scrollTo(0, a.getBoundingClientRect().top + scrollY - 70); });
+  else window.scrollTo(0,0);
+  document.querySelector('meta[name=theme-color]').content = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
+}
+const depth = ()=> (history.state && history.state.d) || 0;
+function go(h, opts){ history.pushState({h, d:depth()+1}, '', '#'+h); show(h, opts); }
+function replace(h, opts){ history.replaceState({h, d:depth()}, '', '#'+h); show(h, opts); }
+addEventListener('popstate', ()=>{
+  const h = location.hash.slice(1) || 'home';
+  if (current==='rec' && h!=='rec' && Rec.running && !Rec.leaving){
+    history.pushState({h:'rec', d:depth()+1}, '', '#rec');   // 戻るで即座に捨てない: 確認を出す
+    confirmStop();
+    return;
+  }
+  Rec.leaving=false;
+  show(h);
+});
+document.addEventListener('click', e=>{
+  const g = e.target.closest('[data-go]');
+  if (g){ e.stopPropagation(); go(g.dataset.go, {countIn: !!g.dataset.count}); return; }
+  const b = e.target.closest('[data-back]');
+  if (b){ if (history.state && history.state.d>0) history.back(); else replace(b.dataset.back); return; }
+  const t = e.target.closest('[data-toast]');
+  if (t){ toast(t.dataset.toast, false); return; }
+  const d = e.target.closest('[data-discard]');
+  if (d){ discard(+d.dataset.discard); return; }
+});
+
+/* ---------- sheet & toast ---------- */
+function openSheet(html){ $('#sheet').innerHTML=html; $('#sheet').classList.add('on'); $('#scrim').classList.add('on'); }
+function closeSheet(){ $('#sheet').classList.remove('on'); $('#scrim').classList.remove('on'); }
+$('#scrim').onclick = closeSheet;
+let toastTimer, undoFn;
+function toast(msg, undo){ $('#toast-t').textContent=msg; $('#toast-undo').style.display = undo?'':'none'; $('#toast').classList.add('on'); undoFn = undo; clearTimeout(toastTimer); toastTimer=setTimeout(()=>$('#toast').classList.remove('on'), undo?5000:2200); }
+$('#toast-undo').onclick = ()=>{ if(undoFn) undoFn(); $('#toast').classList.remove('on'); };
+const discarded = new Set();
+function discard(lap){
+  closeSheet(); discarded.add(lap); renderDiagLanes();
+  if (current==='extra') history.back();
+  toast(`${lap} 周目を捨てました`, ()=>{ discarded.delete(lap); renderDiagLanes(); });
+}
+function lapMenu(lap){
+  openSheet(`<h3>${lap} 周目</h3><p>ばらつき ${DATA.session.laps[lap-1]}ms。捨てるとこのセッションの中央値と今日の揺れから外れます。5 秒間は元に戻せます。</p>
+  <button class="sb" onclick="closeSheet();go('extra')">詳しく見る</button>
+  <button class="sb" onclick="closeSheet();toast('${lap} 周目をお手本にしました(モック)')">この周をお手本にする</button>
+  <button class="sb" onclick="discard(${lap})">この周を捨てる</button>
+  <button class="sb" onclick="closeSheet()">閉じる</button>`);
+}
+function confirmStop(){
+  const n = Rec.lapsDone();
+  Rec.pause(true);
+  openSheet(`<h3>セッションを止めますか</h3><p>ここまで ${n} 周。止めると、終わった周は結果として残ります。</p>
+  <button class="sb pri" onclick="Rec.finish()">止めて結果を見る(${n} 周)</button>
+  <button class="sb" onclick="Rec.leaving=true;Rec.stop();closeSheet();replace('home');toast('このセッションを捨てました',()=>{})">止めて全部捨てる</button>
+  <button class="sb" onclick="closeSheet();Rec.pause(false)">続ける</button>`);
+}
+
+/* ---------- home ---------- */
+function gaugeLeds(n){ return `<span class="leds" aria-label="安定ゲージ 5 目盛り中 ${n}">${[0,1,2,3,4].map(i=>`<i class="led${i<n?' f':''}"></i>`).join('')}</span>`; }
+(function renderHome(){
+  const order = ['t1','t2','t4'];
+  $('#menu').innerHTML = order.map((id,k)=>{
+    const t = DATA.threads.find(x=>x.id===id);
+    return `<li><button class="mi${k===0?' first':''}" ${k===0?'data-go="phrase"':'data-toast="フレーズ画面(モックは 1 本目のみ)"'} aria-label="${k+1} 本目 ${t.short}、テンポ ${t.bpm}、ゲージ 5 中 ${t.gauge}、前回 ${t.lastMs} ミリ秒、${t.last}">
+      <span class="ord">${k+1}</span>
+      <span><span class="nm">${t.short}</span>${k===0?'<span class="tag">1 本目</span>':''}
+        <span class="mt" style="display:block">${t.kind} · ♩=${t.bpm} · ループ ${t.loop} 小節${t.grid?' · '+t.grid:''}</span>
+        <span class="st">${gaugeLeds(t.gauge)}<span class="num">${t.gauge}/5</span><span class="sep">·</span>前回 <span class="num" style="font-size:18px">${t.lastMs}</span>ms<span class="sep">·</span><span class="muted">${t.last}</span></span>
+      </span>
+      <span class="chev" aria-hidden="true">›</span></button></li>`;
+  }).join('');
+})();
+// ホームの拍の帯: 1 本目のテンポ(♩=58)で呼吸する
+(function homeBeat(){
+  if (reduce || Q.get('chrome')==='0') return;
+  const cells=[...document.querySelectorAll('#homebeat i')]; let k=0;
+  setInterval(()=>{ cells.forEach((c,i)=>c.style.opacity = i===k?1:.35); k=(k+1)%4; }, 60000/58);
+})();
+
+/* ---------- phrase ---------- */
+(function renderSessions(){
+  $('#sessions').innerHTML = PAST.slice(0,3).map(s=>{
+    const v = s.laps.filter(x=>x!=null), lo=Math.min(...v), hi=Math.max(...v), nd=s.laps.some(x=>x==null);
+    return `<div class="sess" role="group" aria-label="${s.date} のセッション ${s.laps.length} 周、${lo} から ${hi} ミリ秒、中央値 ${median(s.laps)}">
+      <span class="d">${s.date}</span>
+      <span class="bars" aria-hidden="true">${s.laps.map(x=>x==null?'<i class="nd"></i>':`<i style="height:${Math.round(x/25*28)}px" title="${x}ms"></i>`).join('')}</span>
+      <span class="v"><span class="num">${s.laps.length}</span> 周 · <b>${lo}〜${hi}</b>ms<br>中央値 <span class="num">${median(s.laps)}</span>ms</span>
+      <button class="iconbtn" style="width:36px" aria-label="${s.date} のセッションのメニュー" onclick="toast('セッションを開く / 捨てる(モック)')">⋯</button>
+      ${nd?'<span class="nd-note">1 周は音が少なく比べていません(8 音未満)</span>':''}
+    </div>`;
+  }).join('');
+})();
+function trendSVG(withToday){
+  const pts = PAST.slice().reverse().map(s=>({d:s.date, m:median(s.laps)}));
+  if (withToday) pts.push({d:'9/23', m:median(DATA.session.laps), today:true});
+  const W=350,H=170,L=30,R=40,T=14,B=26, max=30;
+  const x=i=>L+i*(W-L-R)/(pts.length-1), y=v=>T+(1-v/max)*(H-T-B);
+  const band = pts.map((p,i)=>`${x(i)},${y(p.m+BAND)}`).join(' ')+' '+pts.map((p,i)=>`${x(i)},${y(p.m-BAND)}`).reverse().join(' ');
+  const grid=[0,10,20,30].map(v=>`<line x1="${L}" x2="${W-R}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)" stroke-width="1"/><text x="${L-6}" y="${y(v)+4}" text-anchor="end" font-size="11" fill="var(--text2)">${v}</text>`).join('');
+  const line = pts.map((p,i)=>`${i?'L':'M'}${x(i)},${y(p.m)}`).join('');
+  const last = pts[pts.length-1], li=pts.length-1;
+  const dots = pts.map((p,i)=>`<g><title>${p.d} 中央値 ${p.m}ms(帯 ±${BAND}ms)</title><circle cx="${x(i)}" cy="${y(p.m)}" r="${p.today?6:4.5}" fill="${p.today?'var(--cur)':'var(--past)'}" stroke="var(--bg)" stroke-width="2"/></g>`).join('');
+  const xl = pts.map((p,i)=>`<text x="${x(i)}" y="${H-8}" text-anchor="middle" font-size="12" fill="${p.today?'var(--text)':'var(--text2)'}">${p.today?'今日':p.d}</text>`).join('');
+  const flatTxt = withToday ? '横ばい' : '';
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="セッションの中央値の推移。${pts.map(p=>p.d+' '+p.m+'ms').join('、')}。各点に ±${BAND}ms の帯">
+    ${grid}<text x="${L}" y="10" font-size="11" fill="var(--text2)">ms</text>
+    <polygon points="${band}" fill="var(--band)" stroke="var(--band-edge)" stroke-width="1"/>
+    <path d="${line}" fill="none" stroke="var(--past)" stroke-width="2"/>
+    ${withToday?`<path d="M${x(li-1)},${y(pts[li-1].m)}L${x(li)},${y(last.m)}" stroke="var(--cur)" stroke-width="2"/>`:''}
+    ${dots}${xl}
+    <text x="${x(li)+9}" y="${y(last.m)+5}" font-size="15" font-weight="700" fill="var(--text)">${last.m}</text>
+    ${withToday?`<text x="${x(li)+9}" y="${y(last.m)+20}" font-size="11" fill="var(--text2)" font-family="Hiragino Sans">${flatTxt}</text>`:''}
+  </svg>
+  <p class="small">帯 = その日の値 ±${BAND}ms(同じように弾いても出る揺れの幅)。帯の中の上下は横ばいです。</p>
+  <details class="tbl"><summary>表で見る</summary><table><tr><th>日付</th><th>周</th><th>中央値</th></tr>${pts.map((p,i)=>`<tr><td>${p.today?'9/23(今日)':p.d}</td><td>${p.today?6:PAST[PAST.length-1-i].laps.length}</td><td>${p.m}ms</td></tr>`).join('')}</table></details>`;
+}
+$('#trend1').innerHTML = trendSVG(false);
+$('#trend2').innerHTML = trendSVG(true);
+
+/* ---------- diag lanes ---------- */
+function renderDiagLanes(){
+  const laps = DATA.session.laps, max=30, pm=DATA.session.prevSessionMedian;
+  const kept = laps.map((m,i)=>discarded.has(i+1)?null:m).filter(x=>x!=null);
+  const minLap = laps.indexOf(Math.min(...laps))+1;
+  // 帯: 前のセッションの中央値 ±6ms。その日の揺れが帯より広ければ広げる(狭めない)
+  const lo = Math.min(pm-BAND, Math.min(...kept)), hi = Math.max(pm+BAND, Math.max(...kept));
+  const pct = v => (v/max*100).toFixed(2)+'%';
+  const rows = laps.map((m,i)=>{
+    const n=i+1, gone=discarded.has(n);
+    return `<div class="dl${gone?' gone':''}" aria-label="${n} 周目 ばらつき ${m} ミリ秒${gone?'、捨てた周':''}">
+      <span class="n">${n}</span>
+      <span class="trk"><span class="bar" style="width:${pct(m)}"></span>${n===minLap&&!gone?`<span class="tag" style="left:calc(${pct(m)} + 6px);top:17px">いちばん小さい周</span>`:''}</span>
+      <span class="ms num">${m}<small>ms</small></span>
+      <button class="more" aria-label="${n} 周目のメニュー" onclick="lapMenu(${n})">⋯</button>
+    </div>`;
+  }).join('');
+  $('#dlanes').innerHTML = `
+    <div class="bandlbl" style="left:calc(34px + (100% - 146px) * ${(lo+hi)/2/max})" aria-hidden="true">帯 ${lo}〜${hi}ms</div>
+    <div class="bandcol" style="left:calc(34px + (100% - 146px) * ${lo/max});width:calc((100% - 146px) * ${(hi-lo)/max})" aria-hidden="true"></div>
+    <div class="pmline" style="left:calc(34px + (100% - 146px) * ${pm/max})" aria-hidden="true"><span>前 ${pm}</span></div>
+    ${rows}
+    <div class="axis" aria-hidden="true">${[0,10,20,30].map(v=>`<span style="left:${v/max*100}%">${v}</span>`).join('')}
+      <span style="left:100%;transform:none;margin-left:6px">ms</span></div>`;
+}
+renderDiagLanes();
+
+/* ---------- extra: beat clock (D04) ---------- */
+(function renderClock(){
+  const S=350, c=S/2, gridMs=DATA.diag.gridMs, R=[66,86,106,126];
+  const ang = ms => ms/gridMs*360;                    // 時計回り = 後から出た
+  const pt = (r,deg)=>{ const a=(deg-90)*Math.PI/180; return [c+r*Math.cos(a), c+r*Math.sin(a)]; };
+  const arc = (r,d1,d2)=>{ const [x1,y1]=pt(r,d1),[x2,y2]=pt(r,d2); return `M${x1.toFixed(1)},${y1.toFixed(1)} A${r},${r} 0 0 1 ${x2.toFixed(1)},${y2.toFixed(1)}`; };
+  const J = 'font-family="Hiragino Sans"';
+  let g='';
+  g+=`<circle cx="${c}" cy="${c}" r="134" fill="none" stroke="var(--line)" stroke-width="1"/>`;
+  R.forEach(r=>{ g+=`<circle cx="${c}" cy="${c}" r="${r}" fill="none" stroke="var(--line)" stroke-width="1"/>`; });
+  for (let ms=-120; ms<=120; ms+=10){ const big = ms%50===0; const [x1,y1]=pt(134,ang(ms)),[x2,y2]=pt(big?126:130,ang(ms)); g+=`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="var(--band-edge)" stroke-width="${big?1.5:1}"/>`; }
+  g+=`<line x1="${c}" y1="${c-134}" x2="${c}" y2="${c-48}" stroke="var(--beat1)" stroke-width="1.5"/>`;
+  g+=`<text x="${c}" y="${c-160}" text-anchor="middle" font-size="12" fill="var(--text)" ${J}>格子</text>`;
+  [[65,'+65ms'],[-65,'−65ms']].forEach(([ms,l])=>{ const [x,y]=pt(154,ang(ms)); g+=`<text x="${x}" y="${y+4}" text-anchor="middle" font-size="12" fill="var(--text2)">${l}</text>`; });
+  { const [x,y]=pt(148,180); g+=`<text x="${x}" y="${y+4}" text-anchor="middle" font-size="12" fill="var(--text2)" ${J}>半マス</text>`; }
+  // 1σ の弧: 前の周(灰・外) / この周(青・内)
+  const sp=14/gridMs*360, sc=13/gridMs*360;
+  g+=`<path d="${arc(146,-sp,sp)}" stroke="var(--past)" stroke-width="5" fill="none" stroke-linecap="round"/>`;
+  g+=`<path d="${arc(139,-sc,sc)}" stroke="var(--cur)" stroke-width="5" fill="none" stroke-linecap="round"/>`;
+  NOTES.forEach(n=>{
+    if (n.miss) { const [x,y]=pt(R[n.beat],ang(n.prev)); g+=`<circle cx="${x}" cy="${y}" r="4.5" fill="none" stroke="var(--past)" stroke-width="1.5" stroke-dasharray="2 2"><title>${n.i+1} 音目 弾き忘れ</title></circle>`; return; }
+    const [x,y]=pt(R[n.beat],ang(n.res));
+    if (Math.abs(n.res)>40){
+      g+=`<g><title>${n.i+1} 音目 +${n.res}ms 後から出た</title><path d="M${x-7},${y-6} L${x+7},${y-6} L${x},${y+7} Z" fill="var(--cur)" stroke="var(--bg)" stroke-width="2"/></g>`;
+      g+=`<text x="${x+11}" y="${y+5}" font-size="12" fill="var(--text)" ${J}>7 音目 +62ms</text>`;
+    } else g+=`<circle cx="${x}" cy="${y}" r="4" fill="var(--cur)" stroke="var(--bg)" stroke-width="1.5"><title>${n.i+1} 音目 ${n.res>0?'+':''}${n.res}ms</title></circle>`;
+  });
+  g+=`<text x="${c}" y="${c+14}" text-anchor="middle" font-size="50" font-weight="700" fill="var(--text)">13<tspan font-size="18" fill="var(--text2)" dx="2">ms</tspan></text>`;
+  g+=`<text x="${c}" y="${c+34}" text-anchor="middle" font-size="12" fill="var(--text2)" ${J}>前の周 14ms · 横ばい</text>`;
+  { const [x1,y1]=pt(166,-38),[x2,y2]=pt(166,38);
+    g+=`<text x="${x1}" y="${y1}" text-anchor="middle" font-size="13" fill="var(--text)" ${J}>▲ 先に出た</text>`;
+    g+=`<text x="${x2}" y="${y2}" text-anchor="middle" font-size="13" fill="var(--text)" ${J}>後から出た ▼</text>`; }
+  $('#clock').innerHTML = `<svg class="clock" viewBox="-12 -2 ${S+24} ${S+8}" role="img" aria-label="拍の時計。5 周目のばらつき 13 ミリ秒、前の周 14、横ばい。7 音目だけ 62 ミリ秒後から出た">${g}</svg>`;
+
+  // 拍ごと: 真上の拡大(±30ms)の点の列。7 音目のような外れ値は平均から外す
+  const words = o => Math.abs(o)<FLAT ? ['並んだ',''] : o>0 ? ['少し後から出た','▼ '] : ['少し先に出た','▲ '];
+  const SW=350, SH=30, sx = ms => SW/2 + ms/30*(SW/2-12);
+  $('#beats').innerHTML = `<p class="small" style="margin:-4px 0 6px">真上のあたりを拡大(左右 ±30ms)。灰の帯 = 前の周のその拍の ±1σ</p>` + [0,1,2,3].map(b=>{
+    const cur = NOTES.filter(n=>n.beat===b && !n.miss), v = cur.filter(n=>Math.abs(n.res)<=40).map(n=>n.res);
+    const pv = NOTES.filter(n=>n.beat===b).map(n=>n.prev), pm = pv.reduce((a,x)=>a+x,0)/pv.length;
+    const o = Math.round(v.reduce((a,x)=>a+x,0)/v.length); const [w,sh]=words(o);
+    let svg = `<rect x="${sx(pm-7)}" y="6" width="${sx(pm+7)-sx(pm-7)}" height="${SH-12}" rx="3" fill="var(--band)" stroke="var(--band-edge)"/>`;
+    svg += `<line x1="${sx(0)}" x2="${sx(0)}" y1="2" y2="${SH-2}" stroke="var(--beat1)" stroke-width="1.5"/>`;
+    [-30,-20,-10,10,20,30].forEach(m=>svg+=`<line x1="${sx(m)}" x2="${sx(m)}" y1="${SH/2-3}" y2="${SH/2+3}" stroke="var(--band-edge)"/>`);
+    cur.forEach((n,k)=>{ if (Math.abs(n.res)>40){ svg+=`<path d="M${SW-14},${SH/2-6} L${SW-2},${SH/2-6} L${SW-8},${SH/2+6} Z" fill="var(--cur)"><title>7 音目 +62ms(範囲外)</title></path>`; return; }
+      svg+=`<circle cx="${sx(n.res)}" cy="${SH/2 + (k%2?4:-4)}" r="4.5" fill="var(--cur)" stroke="var(--bg)" stroke-width="2"><title>${n.i+1} 音目 ${n.res}ms</title></circle>`; });
+    NOTES.filter(n=>n.beat===b && n.miss).forEach(n=>svg+=`<circle cx="${sx(n.prev)}" cy="${SH/2}" r="4.5" fill="none" stroke="var(--past)" stroke-width="1.5" stroke-dasharray="2 2"/>`);
+    return `<div class="brow2" aria-label="${b+1} 拍目 平均 ${o} ミリ秒 ${w}">
+      <div class="bh"><span class="k">${b+1} 拍目</span><span class="o num">${o>0?'+':o<0?'−':'±'}${Math.abs(o)}<small>ms</small></span><span class="w">${sh}${w}</span>${b===1?'<span class="x">7 音目は +62ms ▼</span>':''}</div>
+      <svg viewBox="0 0 ${SW} ${SH}" class="chart" aria-hidden="true">${svg}</svg></div>`;
+  }).join('') + `<div class="axis2 num"><span>−30ms ▲</span><span>0</span><span>▼ +30ms</span></div>`;
+
+  // ピアノロール
+  const W=350,H=128,L=4,T=8, cell=(W-L-8)/26, rowH=(H-T-22)/8;
+  const yy = p => T+(7-p)*rowH;
+  let r=`<rect x="0" y="0" width="${W}" height="${H-18}" fill="var(--surface)" rx="6"/>`;
+  for(let k=0;k<=26;k+=4){ r+=`<line x1="${L+k*cell}" x2="${L+k*cell}" y1="${T-4}" y2="${H-22}" stroke="var(--line)"/>`; }
+  NOTES.forEach(n=>{
+    const x0=L+n.i*cell;
+    r+=`<rect x="${x0+n.prev/gridMs*cell}" y="${yy(n.pitch)+1}" width="${cell*.78}" height="${rowH-2}" rx="2" fill="var(--past)" opacity=".75"/>`;
+    if (n.miss){ r+=`<rect x="${x0}" y="${yy(n.pitch)+1}" width="${cell*.78}" height="${rowH-2}" rx="2" fill="none" stroke="var(--cur)" stroke-dasharray="2 2"/><text x="${x0+cell*.4}" y="${yy(n.pitch)-3}" text-anchor="middle" font-size="10" fill="var(--text)" font-family="Hiragino Sans">◌</text>`; return; }
+    r+=`<rect x="${x0+n.res/gridMs*cell}" y="${yy(n.pitch)+1+rowH*0}" width="${cell*.78}" height="${rowH-2}" rx="2" fill="var(--cur)"><title>${n.i+1} 音目 ${n.res}ms</title></rect>`;
+    if (n.extra){ r+=`<text x="${x0+cell*.4}" y="${yy(n.pitch+2)+rowH-2}" text-anchor="middle" font-size="13" font-weight="700" fill="var(--text)">＋</text>`; }
+  });
+  r+=`<text x="${L+6.5*cell}" y="${H-5}" text-anchor="middle" font-size="11" fill="var(--text)" font-family="Hiragino Sans">7 音目 ▼</text>`;
+  r+=`<text x="${L+17.5*cell}" y="${H-5}" text-anchor="middle" font-size="11" fill="var(--text2)" font-family="Hiragino Sans">18 余分</text>`;
+  r+=`<text x="${L+21.5*cell}" y="${H-5}" text-anchor="middle" font-size="11" fill="var(--text2)" font-family="Hiragino Sans">22 弾き忘れ</text>`;
+  $('#roll').innerHTML = `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="ピアノロール。前の周を灰、この周を青で重ねる。7 音目が 62 ミリ秒後から出た、18 音目が余分、22 音目を弾き忘れ">${r}</svg>`;
+  $('#tbl').insertAdjacentHTML('beforeend', `<table><tr><th>音</th><th>拍</th><th>前の周</th><th>この周</th></tr>${NOTES.map(n=>`<tr><td>${n.i+1}${n.extra?' 余分':''}${n.miss?' 弾き忘れ':''}</td><td>${n.beat+1}</td><td>${n.prev}ms</td><td>${n.miss?'—':n.res+'ms'}</td></tr>`).join('')}</table>`);
+})();
+
+/* ---------- REC engine: 状態は「セッション開始からの拍」だけで決まる ---------- */
+const Rec = (()=>{
+  const laps = DATA.session.laps, BPM=58;
+  const pls = [...document.querySelectorAll('#pillars .pl')];
+  let raf=0, t0=0, beatMs=300, startBeat=0, endBeat=Infinity, running=false, paused=false, pauseAt=0, enteredAt=0, lastWritten=0;
+  const lapMs = n => laps[(n-1)%laps.length];
+  function verdict(n){
+    if (n===1) return '1 周目(基準)';
+    const d = lapMs(n)-lapMs(n-1);
+    if (Math.abs(d)<FLAT) return '前の周と並んだ';
+    return d<0 ? `前の周より ${-d}ms 小さい` : `前の周より ${d}ms ばらついた`;
+  }
+  function stateAt(b){
+    if (b<4) return {phase:'count', lap:1, remain:4-Math.floor(b), led:3, frac:b%1};
+    const n = Math.floor((b-4)/16)+1, p=(b-4)%16;
+    const s = {lap:n, frac:p%1};
+    if (p<8){ s.phase='play'; s.beat=Math.floor(p)%4; s.led=Math.floor(p/4); }
+    else if (p<12){ s.phase='rest'; s.beat=Math.floor(p)%4; s.led=2; }
+    else { s.phase='count'; s.remain=4-Math.floor(p-12); s.led=3; }
+    s.written = p>=9 ? n : n-1;                // 休みの 2 拍目に書き込まれる
+    s.pending = (p>=8 && p<9) ? n : 0;         // 解析待ちは「…」
+    return s;
+  }
+  function paint(b){
+    const s = stateAt(b);
+    const decay = reduce ? 0 : Math.min(1, s.frac*beatMs/150);
+    const pillarsEl = $('#pillars');
+    pillarsEl.classList.toggle('rest', s.phase==='rest');
+    pillarsEl.classList.toggle('count', s.phase==='count');
+    $('#restlbl').textContent = s.phase==='rest' ? '休む' : s.phase==='count' ? 'つぎの周' : '';
+    pls.forEach((el,i)=>{
+      const g = el.querySelector('.glow'), bn = el.querySelector('.bn');
+      el.classList.remove('lit','gone');
+      g.style.opacity = 0; bn.textContent = i+1;
+      if (s.phase==='count'){
+        if (i>=s.remain) { el.classList.add('gone'); return; }
+        bn.textContent = i===s.remain-1 ? s.remain : '';
+        g.style.opacity = i===s.remain-1 ? (0.9 - 0.3*decay) : 0.35;
+        if (i===s.remain-1) el.classList.add('lit');
+      } else if (s.phase==='play'){
+        if (i===s.beat){ el.classList.add('lit'); g.style.opacity = 1 - 0.3*decay; }
+      } else { // rest: 拍は続くが光は弱く
+        if (i===s.beat) g.style.opacity = 0.3 - 0.15*decay;
+      }
+    });
+    // 状態行
+    const sec = Math.floor(b*60/BPM);
+    $('#r-time').innerHTML = `<i></i>${Math.floor(sec/60)}:${String(sec%60).padStart(2,'0')}`;
+    $('#r-mode').textContent = s.phase==='play' ? '弾く' : '休む';
+    [...document.querySelectorAll('#r-leds .led')].forEach((l,i)=>l.classList.toggle('now', i===s.led));
+    // レーン
+    const w = s.written||0;
+    const shown = [];
+    for (let n=Math.max(1, w-2 + (s.pending?1:0)); n<=w; n++) shown.push(n);
+    let html='';
+    shown.forEach(n=>{
+      const latest = n===w && !s.pending;
+      html += `<div class="lane${latest?' latest':''}${latest && n>lastWritten && running?' fresh':''}" aria-label="${n} 周目 ${lapMs(n)} ミリ秒"><span class="n">${n}</span><span class="bar" style="width:${lapMs(n)/24*100}%"></span><span class="ms num">${lapMs(n)}<small>ms</small></span></div>`;
+      if (latest) html += `<div class="verdict">${verdict(n)}</div>`;
+    });
+    if (s.pending) html += `<div class="lane pending"><span class="n">${s.pending}</span><span class="bar" style="width:0"></span><span class="ms num">…</span></div>`;
+    if (s.phase==='play') html += `<div class="lane cur"><span class="n">${s.lap}</span><span class="play">▶ 演奏中</span></div>`;
+    else html += `<div class="lane next"><span class="n">${s.phase==='count'&&b<4?1:s.lap+1}</span><span class="play">▷ 次の周</span></div>`;
+    $('#r-lanes').innerHTML = html;
+    if (w>lastWritten) lastWritten = w;
+  }
+  function loop(now){
+    if (paused) return;
+    let b = startBeat + (now-t0)/beatMs;
+    if (b>=endBeat){ b=endBeat; paint(b); running=false; return; }
+    paint(b); raf = requestAnimationFrame(loop);
+  }
+  function start(sb, eb, ms){ cancelAnimationFrame(raf); startBeat=sb; endBeat=eb; beatMs=ms; t0=performance.now(); running=true; paused=false; enteredAt=t0; lastWritten=stateAt(sb).written||0; raf=requestAnimationFrame(loop); }
+  const STATIC = 52;   // 4 周目の 1 拍目(カウントインを終えた演奏中)
+  return {
+    get running(){ return running; }, leaving:false,
+    enter(opts){
+      const at = Q.get('at');
+      if (Q.get('anim')==='1' && !opts.countIn){
+        if (at!=null){ running=false; beatMs=220; lastWritten=99; paint(Math.min(STATIC, 16 + (+at)/220)); return; }
+        start(16, STATIC, 220);            // 1 周目の休みから 2 周分(約 8 秒)
+      } else if (opts.countIn){
+        start(0, Infinity, 1034/2.2);       // クリックでたどった場合: カウントインから(デモは約 2 倍速)
+      } else { running=false; lastWritten=99; paint(STATIC); }
+      enteredAt = performance.now();
+    },
+    stop(){ cancelAnimationFrame(raf); running=false; paused=false; },
+    pause(p){ if (p){ paused=true; pauseAt=performance.now(); cancelAnimationFrame(raf); } else if (paused){ paused=false; t0 += performance.now()-pauseAt; raf=requestAnimationFrame(loop);} },
+    lapsDone(){ return running||paused ? (stateAt(startBeat + ((paused?pauseAt:performance.now())-t0)/beatMs).written||0) : 3; },
+    finish(){ Rec.leaving=true; Rec.stop(); closeSheet(); replace('diag'); },
+    tap(){ if (performance.now()-enteredAt < 1500) return; Rec.finish(); },
+  };
+})();
+// 全面タップで終える(1 本指・移動 20px 以内)
+(function(){
+  let sx=0, sy=0, ok=false;
+  const el=$('#s-rec');
+  el.addEventListener('pointerdown', e=>{ sx=e.clientX; sy=e.clientY; ok=e.isPrimary; });
+  el.addEventListener('pointerup', e=>{ if (!ok || e.target.closest('button')) return; if (Math.hypot(e.clientX-sx,e.clientY-sy)<=20) Rec.tap(); });
+  $('#r-next').addEventListener('click', e=>{ e.stopPropagation(); Rec.finish(); toast('1 本目を保存しました。次は F→B♭ の押さえ替え(モック)'); });
+})();
+
+/* ---------- dev chrome ---------- */
+$('#dev-theme').onclick = ()=>{ document.documentElement.classList.toggle('light'); show(current); };
+$('#dev-anim').onclick = ()=>{ const u=new URL(location.href); u.searchParams.set('anim','1'); u.hash='rec'; location.href=u; };
+
+show(location.hash.slice(1)||'home');
+history.replaceState({h:current, d:0}, '', location.hash||'#home');
+</script>
+</body>
+</html>

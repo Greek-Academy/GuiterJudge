@@ -1,0 +1,775 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#FBF8F1">
+<title>練習帳 — F3「練習帳と持ち曲」モック</title>
+<style>
+/* ============ トークン ============ */
+:root{
+  --paper:#FBF8F1; --paper-2:#F4EFE3; --grid-minor:rgba(185,203,216,.26); --grid-major:rgba(160,184,201,.46);
+  --margin-line:#B9CBD8;
+  --ink:#3A3A3A; --ink-2:#77756F; --ink-3:#B3B0A8;
+  --red:#C8402F; --red-soft:rgba(200,64,47,.12);
+  --sticky:#F6D860; --sticky-2:#EFCB43; --sticky-ink:#3A3320;
+  --tape:rgba(214,222,226,.72);
+  --face:#1E1B16; --face-ink:#8D8676; --face-ink-2:#5E584C;
+  --btn:#34322E; --btn-ink:#FBF8F1;
+  --shadow:0 1px 0 rgba(0,0,0,.05), 0 6px 14px -8px rgba(60,40,10,.28);
+  --f-maru:"Zen Maru Gothic","Hiragino Maru Gothic ProN","Hiragino Maru Gothic Pro",sans-serif;
+  --f-min:"Hiragino Mincho ProN","Hiragino Mincho Pro","Yu Mincho",serif;
+  --f-num:"Avenir Next","Avenir","Hiragino Sans",sans-serif;
+  --f-hand:"Klee One","Klee","Hiragino Maru Gothic ProN",sans-serif;
+  color-scheme:light;
+}
+html[data-theme="dark"]{
+  --paper:#23252B; --paper-2:#1C1E23; --grid-minor:rgba(90,99,112,.30); --grid-major:rgba(98,108,122,.55);
+  --margin-line:#4A515C;
+  --ink:#E8E4DA; --ink-2:#A19D93; --ink-3:#6E6B65;
+  --red:#E0664F; --red-soft:rgba(224,102,79,.16);
+  --sticky:#D8BE52; --sticky-2:#C9AE40; --sticky-ink:#2A2512;
+  --tape:rgba(160,170,180,.35);
+  --face:#131418; --face-ink:#7F7A70; --face-ink-2:#55524C;
+  --btn:#E8E4DA; --btn-ink:#23252B;
+  --shadow:0 1px 0 rgba(0,0,0,.3), 0 8px 16px -8px rgba(0,0,0,.6);
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:var(--paper);color:var(--ink);-webkit-text-size-adjust:100%}
+body{font-family:var(--f-maru);overflow-x:hidden;-webkit-tap-highlight-color:transparent}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+button:focus-visible{outline:2px dashed var(--ink);outline-offset:3px}
+.num{font-family:var(--f-num);font-feature-settings:"tnum" 1,"lnum" 1;letter-spacing:.01em}
+.hand{font-family:var(--f-hand)}
+.min{font-family:var(--f-min)}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* ============ 紙 ============ */
+.screen{display:none;min-height:100dvh;position:relative}
+.screen.on{display:block}
+.paper{
+  background-color:var(--paper);
+  background-image:
+    linear-gradient(var(--grid-major) 1px,transparent 1px),
+    linear-gradient(90deg,var(--grid-major) 1px,transparent 1px),
+    linear-gradient(var(--grid-minor) 1px,transparent 1px),
+    linear-gradient(90deg,var(--grid-minor) 1px,transparent 1px);
+  background-size:32px 32px,32px 32px,8px 8px,8px 8px;
+  background-position:-1px -1px;
+}
+/* 紙の繊維(フィルタノイズをインライン SVG で) */
+.paper::before{
+  content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.55;mix-blend-mode:multiply;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 .45  0 0 0 0 .38  0 0 0 0 .25  0 0 0 .09 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+html[data-theme="dark"] .paper::before{mix-blend-mode:screen;opacity:.35}
+/* 綴じ穴と余白線 */
+.paper::after{
+  content:"";position:fixed;top:0;bottom:0;left:0;width:30px;pointer-events:none;z-index:1;
+  background:
+    radial-gradient(circle at 12px 50%, rgba(0,0,0,.16) 0 4.2px, rgba(0,0,0,.05) 4.6px, transparent 5.4px) 0 0/30px 44px repeat-y,
+    linear-gradient(90deg, transparent 29px, var(--margin-line) 29px 30px);
+}
+html[data-theme="dark"] .paper::after{
+  background:
+    radial-gradient(circle at 12px 50%, rgba(0,0,0,.55) 0 4.2px, rgba(0,0,0,.2) 4.6px, transparent 5.4px) 0 0/30px 44px repeat-y,
+    linear-gradient(90deg, transparent 29px, var(--margin-line) 29px 30px);
+}
+.page{position:relative;z-index:2;padding:0 20px 0 42px}
+/* 小口(紙の厚み) */
+.edge{position:fixed;top:0;bottom:0;right:0;width:4px;z-index:3;pointer-events:none;
+  background:linear-gradient(90deg,transparent 0 1px,rgba(0,0,0,.07) 1px 2px,transparent 2px 3px,rgba(0,0,0,.10) 3px 4px)}
+
+/* ============ ヘッダ ============ */
+.top{display:flex;align-items:flex-end;justify-content:space-between;padding-top:18px;padding-bottom:10px;
+  border-bottom:1.5px solid var(--ink);position:relative;margin-bottom:4px}
+.top::after{content:"";position:absolute;left:0;right:0;bottom:-4px;border-bottom:1px solid var(--ink-3)}
+.top h1{margin:0;font-size:24px;font-weight:700;letter-spacing:.06em}
+.top .date{font-size:15px;color:var(--ink-2)}
+.top .date b{font-size:20px;color:var(--ink);font-weight:600;margin-right:2px}
+.nav{display:flex;align-items:center;justify-content:space-between;height:52px;margin-top:6px}
+.back{display:inline-flex;align-items:center;gap:4px;height:44px;padding:0 10px 0 2px;font-size:16px;color:var(--ink-2)}
+.back svg{width:18px;height:18px}
+.pno{font-family:var(--f-num);font-size:14px;color:var(--ink-2);letter-spacing:.06em}
+
+/* ============ 付箋 ============ */
+.sticky{position:relative;background:linear-gradient(172deg,var(--sticky) 0 70%,var(--sticky-2));color:var(--sticky-ink);
+  box-shadow:0 1px 1px rgba(0,0,0,.08), 0 10px 14px -10px rgba(70,50,0,.5), inset 0 -18px 18px -18px rgba(120,80,0,.25);
+  transform:rotate(-2deg);}
+.sticky::after{/* めくれた角の影 */content:"";position:absolute;right:0;bottom:0;width:26px;height:26px;
+  background:linear-gradient(315deg, var(--paper) 0 45%, rgba(0,0,0,.12) 50%, var(--sticky-2) 56%);}
+.tape{position:absolute;top:-11px;left:50%;width:84px;height:22px;margin-left:-42px;background:var(--tape);
+  transform:rotate(3deg);box-shadow:0 1px 2px rgba(0,0,0,.06);
+  -webkit-mask:linear-gradient(90deg,transparent 0 2px,#000 2px calc(100% - 2px),transparent calc(100% - 2px)),
+               repeating-linear-gradient(0deg,#000 0 3px,transparent 3px 4px);
+  -webkit-mask-composite:source-over}
+.sticky .label{font-size:13px;letter-spacing:.14em;opacity:.78}
+
+/* 今日の付箋(ホーム) */
+.next{margin:26px 6px 28px 2px;padding:20px 20px 18px}
+.next h2{margin:6px 0 2px;font-size:23px;font-weight:700;letter-spacing:.02em;line-height:1.35}
+.next .sub{font-size:13px;opacity:.72;margin-bottom:12px}
+.next .row{display:flex;align-items:center;gap:14px;font-size:14px;margin-bottom:16px}
+.next .row .ms{font-size:30px;font-weight:600;line-height:1}
+.next .row .ms small{font-size:14px;font-weight:500;margin-left:2px}
+.gauge{display:inline-flex;align-items:center;gap:5px}
+.gauge i{width:12px;height:12px;border-radius:50%;border:1.6px solid currentColor;display:inline-block}
+.gauge i.f{background:currentColor}
+.gauge-t{font-family:var(--f-num);font-size:13px;margin-left:4px;opacity:.8}
+
+/* ボタン(鉛筆で塗った札) */
+.btn-ink{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;height:64px;background:var(--btn);color:var(--btn-ink);
+  font-size:20px;font-weight:700;letter-spacing:.06em;box-shadow:0 2px 0 rgba(0,0,0,.18);position:relative}
+.btn-ink::before{content:"";position:absolute;inset:3px;border:1px solid rgba(255,255,255,.14);pointer-events:none}
+html[data-theme="dark"] .btn-ink::before{border-color:rgba(0,0,0,.12)}
+.btn-ink .pen{width:22px;height:22px}
+.btn-line{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:48px;padding:0 14px;border:1.5px solid var(--ink);
+  font-size:15px;background:color-mix(in srgb,var(--paper) 88%,transparent)}
+
+/* ============ フィード ============ */
+.day{margin-top:14px}
+.day-h{display:flex;align-items:baseline;gap:8px;font-size:14px;color:var(--ink-2);height:24px}
+.day-h b{font-family:var(--f-num);font-size:16px;color:var(--ink);font-weight:600}
+.day-h::after{content:"";flex:1;border-bottom:1px dashed var(--ink-3);transform:translateY(-4px)}
+.day.blank .day-h{color:var(--ink-3);height:22px}
+.day.blank .day-h b{color:var(--ink-3);font-weight:500;font-size:14px}
+.day.blank .day-h::after{border-bottom-style:dotted;opacity:.6}
+.entry{display:block;width:100%;text-align:left;padding:8px 0 9px 12px;border-left:2px solid transparent;position:relative}
+.entry:active{background:var(--red-soft)}
+.entry .l1{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+.entry .nm{font-size:17px;font-weight:600;line-height:1.35}
+.entry .v{font-family:var(--f-num);font-size:22px;font-weight:600;white-space:nowrap}
+.entry .v small{font-size:13px;font-weight:500;margin-left:1px;color:var(--ink-2)}
+.entry .l2{font-family:var(--f-min);font-size:15px;color:var(--ink-2);margin-top:2px;line-height:1.5}
+.entry::before{content:"";position:absolute;left:0;top:15px;width:5px;height:5px;border-radius:50%;background:var(--ink-3)}
+
+.foot-note{font-family:var(--f-hand);font-size:13px;color:var(--ink-2);margin:22px 0 0;line-height:1.6}
+
+/* 持ち曲の小口(インデックスタブ) */
+.tabs{margin:26px -20px 0 0;padding-bottom:36px}
+.tabs-h{font-size:14px;color:var(--ink-2);letter-spacing:.1em;margin-bottom:8px;display:flex;justify-content:space-between;padding-right:20px}
+.tab{display:flex;align-items:center;justify-content:space-between;width:100%;height:52px;margin-bottom:8px;padding:0 16px 0 14px;
+  background:color-mix(in srgb,var(--paper) 70%,#E9E2CF);border:1px solid var(--ink-3);border-right:0;text-align:left;box-shadow:var(--shadow)}
+html[data-theme="dark"] .tab{background:#2D3037}
+.tab .nm{font-size:16px;font-weight:600}
+.tab .nm::before{content:"♪";margin-right:8px;color:var(--ink-2)}
+.tab .meta{font-family:var(--f-num);font-size:13px;color:var(--ink-2)}
+.side-tab{position:absolute;top:0;right:124px;z-index:4;height:44px;padding:4px 12px 0;display:flex;align-items:center;gap:6px;font-size:14px;letter-spacing:.12em;
+  background:linear-gradient(var(--sticky-2),var(--sticky) 30%);color:var(--sticky-ink);box-shadow:0 2px 3px rgba(0,0,0,.14)}
+.side-tab .num{font-size:13px;letter-spacing:0;opacity:.75}
+  background:var(--sticky);color:var(--sticky-ink);box-shadow:-2px 2px 4px rgba(0,0,0,.12);text-align:center}
+
+/* ============ フレーズのページ ============ */
+.ph-title{margin:4px 0 2px;font-size:24px;font-weight:700;line-height:1.35}
+.ph-sub{font-size:15px;color:var(--ink-2)}
+.chips{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;margin:12px 0 4px;font-size:14px}
+.chips span{white-space:nowrap}
+.chips .set{margin-left:auto;display:inline-flex;align-items:center;gap:4px;height:44px;padding:0 4px;color:var(--ink-2);font-size:14px;text-decoration:underline;text-underline-offset:4px}
+.sec-h{display:flex;align-items:baseline;justify-content:space-between;margin:22px 0 6px;font-size:15px;font-weight:700;letter-spacing:.08em}
+.sec-h small{font-weight:400;font-size:12px;color:var(--ink-2);letter-spacing:0}
+.chart{display:block;width:100%;height:auto;overflow:visible}
+.chart text{font-family:var(--f-num);fill:var(--ink-2)}
+.takes{width:100%;border-collapse:collapse;font-size:15px}
+.takes th{font-size:11px;font-weight:400;color:var(--ink-2);text-align:right;padding:0 4px 4px;white-space:nowrap}
+.takes th:first-child{text-align:left}
+.takes td{height:52px;border-top:1px solid var(--grid-major);padding:0 4px;text-align:right;white-space:nowrap}
+.takes td:first-child{text-align:left;color:var(--ink-2);font-size:13px}
+.takes td:first-child b{display:block;font-family:var(--f-num);font-size:16px;color:var(--ink);font-weight:600}
+.takes .ms{font-family:var(--f-num);font-size:20px;font-weight:600}
+.takes .ms small,.takes .u{font-size:12px;color:var(--ink-2);font-weight:400}
+.takes .n{font-family:var(--f-num);font-size:17px}
+.takes .ic{width:44px;height:44px;display:inline-flex;align-items:center;justify-content:center;color:var(--ink-2)}
+.takes tr.gone td{opacity:.35;text-decoration:line-through}
+.menu{position:absolute;z-index:20;background:var(--paper);border:1.5px solid var(--ink);box-shadow:var(--shadow);min-width:200px}
+.menu button{display:block;width:100%;text-align:left;height:52px;padding:0 16px;font-size:16px}
+.menu button+button{border-top:1px solid var(--ink-3)}
+.menu .del{color:var(--ink)}
+.ref{margin:26px 18px 8px 8px;padding:16px 18px;transform:rotate(1.4deg);background:linear-gradient(176deg,#FBEA9A,#F3DA70)}
+html[data-theme="dark"] .ref{background:linear-gradient(176deg,#CDB75A,#BFA846)}
+.ref h3{margin:4px 0 4px;font-size:17px}
+.ref p{margin:0 0 12px;font-family:var(--f-min);font-size:15px}
+.ref .btns{display:flex;flex-wrap:wrap;gap:8px}
+.ref .btn-line{border-color:rgba(58,51,32,.6);background:rgba(255,255,255,.28);min-height:44px;font-size:14px;padding:0 10px;color:var(--sticky-ink)}
+.gauge-box{margin:26px 0 0;padding:14px 0 0;border-top:1px dashed var(--ink-3)}
+.gauge-box .g{display:flex;align-items:center;gap:12px;font-size:15px}
+.gauge-box .gauge i{width:16px;height:16px}
+.gauge-box p{font-family:var(--f-min);font-size:15px;color:var(--ink-2);line-height:1.7;margin:8px 0 12px}
+.q3{display:none;margin-top:6px;padding:14px;border:1.5px solid var(--ink);background:var(--paper)}
+.q3.on{display:block}
+.q3 p{margin:0 0 10px!important;color:var(--ink)!important}
+.q3 .row{display:flex;gap:8px}
+.q3 .row .btn-line{flex:1}
+.bar{position:fixed;left:0;right:0;bottom:0;z-index:10;padding:10px 16px calc(12px + env(safe-area-inset-bottom)) 42px;
+  background:linear-gradient(transparent,var(--paper) 22%)}
+.bar .btn-ink{height:68px}
+.spacer{height:110px}
+
+/* ============ 伏せたノート(録音中) ============ */
+.face{position:fixed;inset:0;z-index:30;background:var(--face);color:var(--face-ink);overflow:hidden;display:block;width:100%;text-align:left}
+.face::before{/* 紙の裏の繊維 */content:"";position:absolute;inset:-20px;opacity:.9;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.6 .9' numOctaves='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 .9  0 0 0 0 .82  0 0 0 0 .66  0 0 0 .05 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>"),
+    radial-gradient(120% 70% at 50% 45%, rgba(255,240,210,.035), transparent 70%);}
+.face::after{/* 伏せた紙の縁 */content:"";position:absolute;inset:10px;border:1px solid rgba(255,245,225,.05);pointer-events:none}
+.face .trace{position:absolute;left:0;right:0;top:46%;height:60px}
+.face .trace svg{width:100%;height:60px;display:block}
+.face .time{position:absolute;left:0;right:0;top:calc(46% + 84px);text-align:center;font-family:var(--f-num);font-size:34px;letter-spacing:.08em;color:var(--face-ink)}
+.face .hint{position:absolute;left:30px;right:30px;bottom:12%;text-align:center;font-family:var(--f-min);font-size:32px;line-height:1.55;color:var(--face-ink-2);transition:opacity 1.2s}
+.face .count{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:var(--f-num);font-size:200px;font-weight:300;color:rgba(230,220,200,.16)}
+.face .mic{position:absolute;left:0;right:0;top:calc(46% - 54px);text-align:center;font-size:32px;color:var(--face-ink-2);font-family:var(--f-min);opacity:0;transition:opacity .4s}
+.face.lost{background:#5A1C15}
+.face.lost .mic{opacity:1;color:#F2C9BF}
+.dlg-wrap{position:fixed;inset:0;z-index:60;background:rgba(10,8,6,.55);display:none;align-items:flex-end}
+.dlg-wrap.on{display:flex}
+.dlg{width:100%;background:var(--paper);color:var(--ink);padding:24px 20px calc(20px + env(safe-area-inset-bottom));box-shadow:0 -10px 30px rgba(0,0,0,.3)}
+.dlg h3{margin:0 0 6px;font-size:21px}
+.dlg p{margin:0 0 18px;font-family:var(--f-min);font-size:16px;color:var(--ink-2);line-height:1.7}
+.dlg .row{display:flex;gap:10px}
+.dlg .row>*{flex:1}
+.dlg .btn-line{min-height:64px;font-size:18px}
+
+/* ============ 書き込み(診断) ============ */
+.prior{margin:2px 0 0;padding:6px 0 10px;font-family:var(--f-min);font-size:15px;line-height:1.7;color:var(--ink-2);border-bottom:1px solid var(--grid-major)}
+.prior .who{font-family:var(--f-maru);font-size:12px;letter-spacing:.1em;display:block;color:var(--ink-3)}
+.stamp{display:flex;align-items:baseline;gap:10px;margin:14px 0 4px;font-size:14px;color:var(--ink-2)}
+.stamp b{font-family:var(--f-num);font-size:17px;color:var(--ink);font-weight:600}
+.stamp .tk{margin-left:auto;font-family:var(--f-num);font-size:13px;border:1px solid var(--ink-3);padding:1px 7px}
+.prose{font-family:var(--f-min);font-size:24px;line-height:1.7;margin:4px 0 0;letter-spacing:.01em;font-weight:500;font-feature-settings:"palt" 1}
+.prose p{margin:0 0 4px}
+.prose .n{font-family:var(--f-num);font-weight:400;font-size:23px}
+.circ{position:relative;display:inline-block;padding:0 3px;font-family:var(--f-num);font-weight:700;font-size:33px;color:var(--ink);line-height:1}
+.circ svg{position:absolute;left:-13px;top:-15px;width:calc(100% + 26px);height:calc(100% + 26px);overflow:visible;pointer-events:none}
+.circ path,.redc{fill:none;stroke:var(--red);stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke}
+.band{margin:12px 0 0;display:block}
+.band svg{display:block;width:100%;height:50px;overflow:visible}
+.band .cap{font-size:12px;color:var(--ink-2);line-height:1.4;margin-top:2px}
+.band text{font-family:var(--f-num);font-size:11px;fill:var(--ink-2)}
+.find{margin:14px 14px 0 8px;padding:10px 16px 11px;transform:rotate(2deg);transform-origin:20% 0}
+.find .label{font-size:12px}
+.find p{margin:2px 0 0;font-family:var(--f-min);font-size:16px;line-height:1.5}
+.note{font-family:var(--f-hand);font-size:13px;color:var(--ink-2);line-height:1.6;margin:12px 0 0}
+.again{margin:12px 0 0}
+.again .sub-row{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px;margin-bottom:8px}
+.again .sub-row button{height:52px;border:1.5px solid var(--ink-3);font-size:14px;display:flex;align-items:center;justify-content:center;gap:4px;background:color-mix(in srgb,var(--paper) 85%,transparent)}
+.again .sub-row button.gone{opacity:.4}
+.big{height:160px!important;flex-direction:column;gap:6px!important;font-size:28px!important}
+.big small{font-size:14px;font-weight:400;opacity:.75;letter-spacing:.04em}
+.big .pen{width:32px!important;height:32px!important}
+#ev{scroll-margin-top:12px}
+.seg{display:grid;grid-template-columns:repeat(3,1fr);border:1.5px solid var(--ink);margin:6px 0 12px}
+.seg button{height:48px;font-size:15px}
+.seg button+button{border-left:1.5px solid var(--ink)}
+.seg button[aria-pressed="true"]{background:var(--btn);color:var(--btn-ink);font-weight:700}
+.staff{display:block;width:100%;overflow:visible}
+.staff text{font-family:var(--f-num);font-size:10px;fill:var(--ink-2)}
+.staff .lab{font-family:var(--f-maru);font-size:11px}
+.legend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--ink-2);margin:4px 0 10px}
+.legend span{display:inline-flex;align-items:center;gap:5px}
+.points{margin:4px 0 0;padding:0;list-style:none;font-family:var(--f-min);font-size:17px;line-height:1.6}
+.points li{padding:6px 0 6px 22px;position:relative;border-bottom:1px dashed var(--ink-3)}
+.points li::before{content:"";position:absolute;left:2px;top:15px;width:10px;height:1.5px;background:var(--ink)}
+.points .n{font-family:var(--f-num)}
+.metrics{display:grid;grid-template-columns:1fr 1fr;gap:0;margin-top:6px;border-top:1.5px solid var(--ink)}
+.metric{padding:10px 8px 12px 0;border-bottom:1px solid var(--grid-major)}
+.metric:nth-child(odd){border-right:1px solid var(--grid-major)}
+.metric:nth-child(even){padding-left:12px}
+.metric .k{font-size:12px;color:var(--ink-2)}
+.metric .v{font-family:var(--f-num);font-size:26px;font-weight:600;line-height:1.2}
+.metric .v small{font-size:13px;font-weight:400;color:var(--ink-2);margin-left:2px}
+.metric .d{font-size:12px;color:var(--ink-2);font-family:var(--f-num)}
+.metric .d em{font-style:normal;font-family:var(--f-maru);border:1px solid var(--ink-3);padding:0 5px;margin-left:4px}
+.listen{display:flex;gap:8px;margin:14px 0 0}
+.listen .btn-line{flex:1}
+.mini-bar{transform:translateY(110%);transition:transform .25s}
+.mini-bar.on{transform:none}
+
+/* ============ 持ち曲 ============ */
+.lead{font-family:var(--f-min);font-size:19px;line-height:1.7;margin:8px 0 18px}
+.card{position:relative;margin:0 0 22px;padding:16px 16px 16px 18px;background:color-mix(in srgb,var(--paper) 60%,#fff);border:1px solid var(--ink-3);box-shadow:var(--shadow)}
+html[data-theme="dark"] .card{background:#2A2D34}
+.card .idx{position:absolute;top:-1px;right:-1px;height:28px;padding:0 10px;display:flex;align-items:center;font-size:12px;letter-spacing:.1em;background:var(--sticky);color:var(--sticky-ink)}
+.card h3{margin:2px 0 8px;font-size:20px;line-height:1.35;padding-right:70px}
+.card h3::before{content:"♪ ";color:var(--ink-2)}
+.card .facts{display:flex;gap:16px;font-size:13px;color:var(--ink-2);margin-bottom:10px;flex-wrap:wrap}
+.card .facts b{display:block;font-family:var(--f-num);font-size:22px;color:var(--ink);font-weight:600}
+.card .facts b small{font-size:12px;font-weight:400;color:var(--ink-2)}
+.card .pencil{font-family:var(--f-min);font-size:15px;line-height:1.7;color:var(--ink-2);margin:0 0 12px;padding:8px 0 0;border-top:1px dashed var(--ink-3)}
+.card .btn-ink{height:60px;font-size:18px}
+
+/* toast(捨てた直後の取り消し) */
+.toast{position:fixed;left:42px;right:16px;bottom:96px;z-index:70;display:none;align-items:center;justify-content:space-between;gap:10px;padding:0 6px 0 16px;height:56px;
+  background:var(--btn);color:var(--btn-ink);font-size:15px;box-shadow:0 6px 18px rgba(0,0,0,.25)}
+.toast.on{display:flex}
+.toast button{height:48px;padding:0 12px;font-weight:700;text-decoration:underline;text-underline-offset:4px;color:var(--btn-ink)}
+
+/* dev */
+.dev{position:fixed;left:2px;bottom:6px;z-index:80;width:26px;height:26px;font-size:13px;border:1px solid var(--ink-3);background:var(--paper);color:var(--ink-2);border-radius:50%}
+.nochrome .dev{display:none}
+
+/* ============ 体験の核のアニメーション ============ */
+.lid{position:fixed;inset:0;z-index:40;background:var(--face);pointer-events:none;opacity:0}
+.anim .lid{opacity:1}
+.anim .rv{opacity:0;transform:translateY(6px)}
+.anim .circ path{stroke-dashoffset:1}
+.anim .find{opacity:0;transform:rotate(-5deg) scale(1.12) translateY(-10px)}
+.circ path{stroke-dasharray:1;stroke-dashoffset:0}
+.play .lid{opacity:0;transition:opacity .6s cubic-bezier(.3,.1,.3,1)}
+.play #diag .paperwrap{animation:brighten .6s ease-out both}
+@keyframes brighten{from{filter:brightness(.35) sepia(.4)}to{filter:none}}
+.play .rv{opacity:1;transform:none;transition:opacity .45s ease-out,transform .45s ease-out}
+.play .rv1{transition-delay:.55s}
+.play .rv2{transition-delay:1.35s}
+.play .rv3{transition-delay:1.55s}
+.play .rv4{transition-delay:2.3s}
+.play .circ path{stroke-dashoffset:0;transition:stroke-dashoffset .5s cubic-bezier(.5,0,.3,1) 1.0s}
+.play .find{opacity:1;transform:rotate(2deg);transition:opacity .12s 1.9s,transform .28s cubic-bezier(.2,1.6,.4,1) 1.9s}
+@media (prefers-reduced-motion:reduce){
+  .play .rv,.play .find,.play .circ path,.play .lid{transition-duration:.01s!important}
+  .play #diag .paperwrap{animation:none}
+}
+</style>
+</head>
+<body>
+<div class="edge" aria-hidden="true"></div>
+
+<!-- ================= ホーム(ノート) ================= -->
+<section class="screen paper" id="home" aria-label="練習帳">
+  <div class="page">
+    <header class="top">
+      <h1>練習帳</h1>
+      <div class="date"><b class="num">9/23</b>(火)</div>
+    </header>
+
+    <div class="sticky next">
+      <span class="tape" aria-hidden="true"></span>
+      <div class="label">次に書き込む</div>
+      <h2>16分のオルタネイト</h2>
+      <div class="sub">Amペンタ 5〜8フレット · ♩=58 · 16分</div>
+      <div class="row">
+        <span>前回</span>
+        <span class="ms num" aria-label="前回のばらつき 13 ミリ秒">13<small>ms</small></span>
+        <span class="gauge" role="img" aria-label="安定ゲージ 5 目盛り中 4"><i class="f"></i><i class="f"></i><i class="f"></i><i class="f"></i><i></i></span><span class="gauge-t">4/5</span>
+      </div>
+      <button class="btn-ink" data-go="rec" data-count="1"><svg class="pen" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l1.2-4.6L15.8 4.8a2 2 0 012.8 0l.6.6a2 2 0 010 2.8L8.6 18.8z M14 6.6l3.4 3.4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>この 1 本を録る</button>
+    </div>
+
+    <div class="day">
+      <div class="day-h"><b>9/22</b>(月)</div>
+      <button class="entry" data-go="phrase">
+        <div class="l1"><span class="nm">16分のオルタネイト</span><span class="v">13<small>ms</small></span></div>
+        <div class="l2">ばらつきは横ばい。一致率は 92%。</div>
+      </button>
+      <button class="entry" data-go="phrase">
+        <div class="l1"><span class="nm">F→B♭ の押さえ替え</span><span class="v">13<small>ms</small></span></div>
+        <div class="l2">B♭ に移る 1 拍目が前回と同じく少し遅れ。</div>
+      </button>
+      <button class="entry" data-go="phrase">
+        <div class="l1"><span class="nm">G→C→D→G のストローク</span><span class="v">16<small>ms</small></span></div>
+        <div class="l2">前回とほぼ同じばらつき。</div>
+      </button>
+    </div>
+    <div class="day">
+      <div class="day-h"><b>9/21</b>(日)</div>
+      <button class="entry" data-go="phrase">
+        <div class="l1"><span class="nm">クロマチック上行</span><span class="v">31<small>ms</small></span></div>
+        <div class="l2">8 音未満のため、今回は比べていません。</div>
+      </button>
+    </div>
+    <div class="day">
+      <div class="day-h"><b>9/20</b>(土)</div>
+      <button class="entry" data-go="phrase">
+        <div class="l1"><span class="nm">16分のオルタネイト</span><span class="v">14<small>ms</small></span></div>
+        <div class="l2">前回とほぼ同じばらつき。</div>
+      </button>
+    </div>
+    <div class="day blank" aria-label="9月19日 書き込みなし"><div class="day-h"><b>9/19</b></div></div>
+    <div class="day">
+      <div class="day-h"><b>9/18</b>(木)</div>
+      <button class="entry" data-go="phrase">
+        <div class="l1"><span class="nm">16分のオルタネイト</span><span class="v">15<small>ms</small></span></div>
+        <div class="l2">前回とほぼ同じばらつき。</div>
+      </button>
+    </div>
+    <div class="day blank" aria-label="9月16日から17日 書き込みなし"><div class="day-h"><b>9/16〜9/17</b></div></div>
+
+    <div class="tabs" id="tabs">
+      <div class="tabs-h"><span>持ち曲</span><span class="num">2</span></div>
+      <button class="tab" data-go="extra"><span class="nm">開放弦の 16 分</span><span class="meta">解決 8/30</span></button>
+      <button class="tab" data-go="extra"><span class="nm">Am ペンタ 下降</span><span class="meta">解決 9/10</span></button>
+      <p class="foot-note">ここに並ぶ数字は、同じように弾けているか(一貫性)の記録です。正しさの判定ではありません。</p>
+    </div>
+  </div>
+  <button class="side-tab" data-go="extra" aria-label="持ち曲のページを開く。2 本">♪ 持ち曲 <span class="num">2</span></button>
+</section>
+
+<!-- ================= ページ(フレーズ) ================= -->
+<section class="screen paper" id="phrase" aria-label="16分のオルタネイトのページ">
+  <div class="page">
+    <div class="nav">
+      <button class="back" data-back><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2"/></svg>ノート</button>
+      <span class="pno">p.24</span>
+    </div>
+    <h1 class="ph-title">16分のオルタネイト</h1>
+    <div class="ph-sub">Amペンタ 5〜8フレット · 単音フレーズ</div>
+    <div class="chips num"><span>♩=58</span><span>16分</span><span>最低音 E</span><button class="set" data-sheet>録音の設定</button></div>
+
+    <div class="sec-h"><span>ばらつきの推移</span><small>ms · 0 から</small></div>
+    <svg class="chart" id="chart" viewBox="0 0 328 200" role="img" aria-label="ばらつきの推移。9/12 21ms、9/15 17ms、9/18 15ms、9/20 14ms、9/22 13ms。最新の 13ms の前後 ±6ms が横ばいの幅"></svg>
+
+    <div class="sec-h"><span>余白の書き込み</span><small>新しい順 · 5 本</small></div>
+    <table class="takes" id="takes">
+      <thead><tr><th>テイク</th><th>ばらつき</th><th>一致率</th><th>忘れ・余分</th><th><span class="sr">聴く</span></th><th><span class="sr">操作</span></th></tr></thead>
+      <tbody></tbody>
+    </table>
+
+    <div class="sticky ref">
+      <span class="tape" aria-hidden="true" style="left:30%;transform:rotate(-4deg)"></span>
+      <div class="label">お手本</div>
+      <p>まだありません。貼ると比べる相手に「お手本」が増えます。</p>
+      <div class="btns"><button class="btn-line">講師の録音</button><button class="btn-line">テイクから選ぶ</button><button class="btn-line">楽譜(MusicXML)</button></div>
+    </div>
+
+    <div class="gauge-box">
+      <div class="g"><span>安定</span><span class="gauge" role="img" aria-label="安定ゲージ 5 目盛り中 4"><i class="f"></i><i class="f"></i><i class="f"></i><i class="f"></i><i></i></span><span class="num">4/5</span></div>
+      <p>前回と横ばい以内の回が続くと目盛りが増えます。満タンになったら「持ち曲にしますか」と訊きます。いつ閉じるかは自分で決められます。</p>
+      <button class="btn-line" id="resolveBtn">持ち曲にする…</button>
+      <div class="q3" id="q3">
+        <p class="min">このフレーズは、見ずに弾いても手に残っていますか。</p>
+        <div class="row"><button class="btn-line">はい</button><button class="btn-line">いいえ</button><button class="btn-line">わからない</button></div>
+      </div>
+      <p class="note">ばらつき・一致率は、同じように弾けているか(一貫性)の記録です。</p>
+    </div>
+    <div class="spacer"></div>
+  </div>
+  <div class="bar"><button class="btn-ink" data-go="rec" data-count="1"><svg class="pen" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l1.2-4.6L15.8 4.8a2 2 0 012.8 0l.6.6a2 2 0 010 2.8L8.6 18.8z M14 6.6l3.4 3.4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>この 1 本を録る</button></div>
+</section>
+
+<!-- ================= 伏せたノート(録音中) ================= -->
+<section class="screen" id="rec" aria-label="録音中">
+  <button class="face" id="face" aria-label="録音中 0 分 14 秒。どこかに触れると止めてノートを開きます">
+    <div class="mic" aria-hidden="true">マイクの音が途切れています</div>
+    <div class="trace" aria-hidden="true"><svg viewBox="0 0 390 60" preserveAspectRatio="none"><path id="tracePath" fill="none" stroke="#A39B88" stroke-opacity=".55" stroke-width="1.6" stroke-linecap="round"/><circle id="traceTip" r="2.6" fill="#D8CFBA" fill-opacity=".8"/></svg></div>
+    <div class="time" id="recTime">0:14</div>
+    <div class="hint" id="hint">伏せて弾いています。<br>触れると開きます。</div>
+    <div class="count" id="count" aria-hidden="true"></div>
+  </button>
+</section>
+
+<!-- ================= 書き込み(診断) ================= -->
+<section class="screen paper" id="diag" aria-label="今日の書き込み">
+  <div class="paperwrap">
+  <div class="page">
+    <div class="nav">
+      <button class="back" data-back><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2"/></svg>ページ</button>
+      <span class="pno">16分のオルタネイト · p.24</span>
+    </div>
+    <div class="prior"><span class="who">前回の書き込み · 9/22 テイク 5</span>14ms · 一致率 83% · 忘れ・余分 6 個</div>
+
+    <div class="stamp"><b>9/23</b>(火) 21:40<span class="tk">テイク 6</span></div>
+    <div class="prose">
+      <p class="rv rv1">前回とほぼ同じばらつきです<span style="white-space:nowrap">(<span class="n">14</span> → <span class="circ" aria-label="今回のばらつき 13 ミリ秒、前回 14、横ばい">13<svg viewBox="0 0 100 60" preserveAspectRatio="none" aria-hidden="true"><path pathLength="1" d="M83 9 C66 -1 26 1 11 17 C-2 32 10 53 45 56 C79 59 99 45 95 27 C92 13 76 5 54 6"/></svg></span><span class="n" style="font-size:17px;margin-left:13px">ms</span>)。</span></p>
+      <p class="rv rv2">一致率は <span class="n">83</span> から <span class="n">92%</span> に、弾き忘れ・余分は <span class="n">6</span> から <span class="n">2</span> 個に。</p>
+    </div>
+    <div class="band rv rv3" role="img" aria-label="横ばいの幅は前回 14 ミリ秒の前後 6 ミリ秒。今回の 13 はその中">
+      <svg id="bandSvg" viewBox="0 0 328 50"></svg>
+      <div class="cap">斜線 = 前回 14ms の前後 ±6ms。この中は横ばい</div>
+    </div>
+    <div class="sticky find">
+      <div class="label">発見</div>
+      <p>これまでのいちばん小さいばらつき<br>(<span class="num">14ms</span>)と横ばい</p>
+    </div>
+    <p class="note rv rv4">同じように弾けているか(一貫性)の記録です。正しさの判定ではありません。</p>
+
+    <div class="again" id="again">
+      <div class="sub-row">
+        <button aria-label="前回のテイクを聴く">▶ 前回</button>
+        <button aria-label="今回のテイクを聴く">▶ 今回</button>
+        <button id="discard">捨てる</button>
+        <button data-scroll="ev">根拠 ▾</button>
+      </div>
+      <button class="btn-ink big" data-go="rec" data-count="1"><svg class="pen" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l1.2-4.6L15.8 4.8a2 2 0 012.8 0l.6.6a2 2 0 010 2.8L8.6 18.8z M14 6.6l3.4 3.4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>もう 1 回録る<small>ノートを伏せて弾きます · ♩=58</small></button>
+    </div>
+
+    <!-- 根拠 -->
+    <div id="ev">
+      <div class="sec-h" style="margin-top:34px"><span>根拠</span><small>比べる相手</small></div>
+      <div class="seg" role="group" aria-label="比べる相手"><button aria-pressed="true">直前</button><button aria-pressed="false">最も安定</button><button aria-pressed="false">お手本</button></div>
+      <svg class="staff" id="staff" viewBox="0 0 328 250" role="img" aria-label="二段譜。上が前回 テイク 5、下が今回 テイク 6。同じ音どうしを線で結ぶ。7 音目が 62 ミリ秒遅れ、18 音目が余分、22 音目が弾き忘れ"></svg>
+      <div class="legend">
+        <span><svg width="10" height="16"><rect x="4" y="1" width="2" height="14" fill="currentColor"/></svg>前回(鉛筆)</span>
+        <span><svg width="10" height="16"><rect x="4" y="1" width="2.4" height="14" fill="var(--red)"/></svg>今回(赤)</span>
+        <span><svg width="12" height="16"><rect x="2.5" y="1.5" width="7" height="13" fill="none" stroke="currentColor"/></svg>弾き忘れ</span>
+        <span><svg width="12" height="16"><defs><pattern id="hl" width="3" height="3" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="1.2" height="3" fill="currentColor"/></pattern></defs><rect x="2.5" y="1.5" width="7" height="13" fill="url(#hl)" stroke="currentColor"/></svg>余分</span>
+        <span>ずれは 2 倍で描いています</span>
+      </div>
+      <ul class="points">
+        <li><span class="n">7</span> 音目が <span class="n">62ms</span> 遅れ(前回も <span class="n">28ms</span> 遅れ)</li>
+        <li><span class="n">18</span> 音目は余分(前回には無い音)</li>
+        <li><span class="n">22</span> 音目を弾き忘れ</li>
+      </ul>
+      <div class="sec-h"><span>6 つの指標</span><small>前回 → 今回</small></div>
+      <div class="metrics">
+        <div class="metric"><div class="k">ばらつき</div><div class="v">13<small>ms</small></div><div class="d">14 → 13<em>横ばい</em></div></div>
+        <div class="metric"><div class="k">音符の一致率</div><div class="v">92<small>%</small></div><div class="d">83 → 92<em>前回より高い</em></div></div>
+        <div class="metric"><div class="k">弾き忘れ・余分</div><div class="v">2<small>個</small></div><div class="d">6 → 2<em>前回より少ない</em></div></div>
+        <div class="metric"><div class="k">テンポの流れ</div><div class="v">−0.1<small>%</small></div><div class="d">ほぼ一定</div></div>
+        <div class="metric"><div class="k">格子の一致度</div><div class="v">95<small>%</small></div><div class="d">16 分の間隔 259ms</div></div>
+        <div class="metric"><div class="k">解析した音</div><div class="v">26<small>音</small></div><div class="d">8 音以上で比べます</div></div>
+      </div>
+      <div class="listen"><button class="btn-line">▶ 前回</button><button class="btn-line">▶ 今回</button><button class="btn-line">⇄ 交互に</button></div>
+      <p class="note">横ばいの幅(±6ms・5pt・1 個)は仮の値です。同じ演奏を何本か録った揺れから決め直します。</p>
+      <div class="spacer"></div>
+    </div>
+  </div>
+  </div>
+  <div class="bar mini-bar" id="miniBar"><button class="btn-ink" data-go="rec" data-count="1"><svg class="pen" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l1.2-4.6L15.8 4.8a2 2 0 012.8 0l.6.6a2 2 0 010 2.8L8.6 18.8z M14 6.6l3.4 3.4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>もう 1 回録る</button></div>
+</section>
+
+<!-- ================= 持ち曲のページ ================= -->
+<section class="screen paper" id="extra" aria-label="持ち曲">
+  <div class="page">
+    <div class="nav">
+      <button class="back" data-back><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2"/></svg>ノート</button>
+      <span class="pno">巻末</span>
+    </div>
+    <header class="top" style="padding-top:2px"><h1>持ち曲</h1><div class="date"><b class="num">2</b>本</div></header>
+    <p class="lead">解決したフレーズです。<br>いつでも弾けます。</p>
+
+    <article class="card">
+      <span class="idx">基礎</span>
+      <h3>開放弦の 16 分</h3>
+      <div class="facts">
+        <div>解決した日<b>8/30</b></div>
+        <div>そのときのばらつき<b>11<small>ms</small></b></div>
+        <div>最近<b>9/10</b></div>
+      </div>
+      <p class="pencil">9/10 に弾いたとき <span class="num">12ms</span>。解決した日と横ばいで、まだ手に残っています。</p>
+      <button class="btn-ink" data-go="rec" data-count="1"><svg class="pen" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l1.2-4.6L15.8 4.8a2 2 0 012.8 0l.6.6a2 2 0 010 2.8L8.6 18.8z M14 6.6l3.4 3.4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>指ならしに 1 本</button>
+    </article>
+
+    <article class="card">
+      <span class="idx">単音</span>
+      <h3>Am ペンタ 下降</h3>
+      <div class="facts">
+        <div>解決した日<b>9/10</b></div>
+        <div>そのときのばらつき<b>15<small>ms</small></b></div>
+        <div>最近<b>—</b></div>
+      </div>
+      <p class="pencil">解決してからは、まだ弾いていません。</p>
+      <button class="btn-ink" data-go="rec" data-count="1"><svg class="pen" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l1.2-4.6L15.8 4.8a2 2 0 012.8 0l.6.6a2 2 0 010 2.8L8.6 18.8z M14 6.6l3.4 3.4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>指ならしに 1 本</button>
+    </article>
+
+    <p class="note" style="font-size:14px">比べる相手は「解決した日の自分」です。前後 ±6ms の中なら横ばいと書きます。数字は一貫性の記録で、正しさの判定ではありません。</p>
+    <div class="spacer" style="height:40px"></div>
+  </div>
+</section>
+
+<div class="lid" aria-hidden="true"></div>
+<div class="dlg-wrap" id="dlg" role="dialog" aria-modal="true" aria-labelledby="dlgT">
+  <div class="dlg">
+    <h3 id="dlgT">録音を止めて、捨てますか</h3>
+    <p>このテイクは保存されません。続けるなら、ノートは伏せたままです。</p>
+    <div class="row"><button class="btn-line" id="dlgKeep">続ける</button><button class="btn-ink" id="dlgDrop" style="height:64px">止めて捨てる</button></div>
+  </div>
+</div>
+<div class="toast" id="toast" role="status"><span id="toastT">テイク 6 を捨てました</span><button id="undo">元に戻す <span class="num" id="toastN">5</span></button></div>
+<button class="dev" id="dev" aria-label="ライトとダークを切り替える(開発用)">◐</button>
+
+<script>
+const DATA = {
+  today: '2026-09-23(火)',
+  takes: [
+    { no: 5, date: '9/22', ms: 13, match: 92, missExtra: 2 },
+    { no: 4, date: '9/20', ms: 14, match: 83, missExtra: 6 },
+    { no: 3, date: '9/18', ms: 15, match: 81, missExtra: 5 },
+    { no: 2, date: '9/15', ms: 17, match: 76, missExtra: 7 },
+    { no: 1, date: '9/12', ms: 21, match: 70, missExtra: 9 },
+  ],
+  diag: { prevMs: 14, curMs: 13, noiseBandMs: 6, gridMs: 259 },
+};
+const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+const NS = 'http://www.w3.org/2000/svg';
+const params = new URLSearchParams(location.search);
+if('scrollRestoration' in history) history.scrollRestoration='manual';
+if (params.get('theme') === 'dark') document.documentElement.dataset.theme = 'dark';
+if (params.get('chrome') === '0') document.body.classList.add('nochrome');
+
+/* ---------- 推移グラフ(方眼の上に鉛筆で) ---------- */
+function drawChart(){
+  const svg = $('#chart'); const W=328,H=200, L=30, R=312, T=10, B=176, maxY=25;
+  const day = d => +d.split('/')[1];
+  const xs = d => L + (day(d)-12)/(23-12)*(R-L);
+  const ys = v => B - v/maxY*(B-T);
+  const pts = [...DATA.takes].reverse();
+  const last = pts[pts.length-1]; const bw = DATA.diag.noiseBandMs;
+  let s = `<defs><pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(-35)"><rect width="1" height="5" fill="var(--ink-2)" opacity=".3"/></pattern></defs>`;
+  [0,10,20].forEach(v=>{ s+=`<line x1="${L}" x2="${R}" y1="${ys(v)}" y2="${ys(v)}" stroke="var(--ink-3)" stroke-width="${v?0.8:1.4}" ${v?'stroke-dasharray="2 3"':''}/><text x="${L-6}" y="${ys(v)+4}" font-size="11" text-anchor="end">${v}</text>`});
+  s+=`<rect x="${L}" y="${ys(last.ms+bw)}" width="${R-L}" height="${ys(last.ms-bw)-ys(last.ms+bw)}" fill="url(#hatch)"/>`;
+  s+=`<text x="${L+4}" y="${ys(last.ms-bw)+14}" font-size="11" text-anchor="start">斜線 = 最新 ±${bw}ms(横ばいの幅)</text>`;
+  // 鉛筆の線(少し揺らす)
+  let d=''; pts.forEach((p,i)=>{ const x=xs(p.date), y=ys(p.ms); d+= (i?` Q ${(x+xs(pts[i-1].date))/2+1.2} ${(y+ys(pts[i-1].ms))/2-1.4} ${x} ${y}`:`M ${x} ${y}`)});
+  s+=`<path d="${d}" fill="none" stroke="var(--ink)" stroke-width="1.5" stroke-linecap="round" opacity=".85"/>`;
+  pts.forEach((p,i)=>{ const x=xs(p.date), y=ys(p.ms);
+    s+=`<circle cx="${x}" cy="${y}" r="3.6" fill="var(--ink)"/>`;
+    s+=`<text x="${x}" y="${i===pts.length-1?y+31:y-11}" font-size="13" text-anchor="middle" style="fill:var(--ink);font-weight:600;paint-order:stroke;stroke:var(--paper);stroke-width:3px">${p.ms}</text>`;
+    s+=`<text x="${x}" y="${B+18}" font-size="11" text-anchor="middle">${p.date}</text>`;
+  });
+  // 今日の空き枠
+  s+=`<text x="${xs('9/23')}" y="${T+12}" font-size="11" text-anchor="middle">今日</text>`;
+  s+=`<line x1="${xs('9/23')}" x2="${xs('9/23')}" y1="${T+18}" y2="${B}" stroke="var(--ink-3)" stroke-dasharray="1 3"/>`;
+  // 最新に赤丸(手描き)
+  const lx=xs(last.date), ly=ys(last.ms);
+  s+=`<path class="redc" d="M ${lx+12} ${ly-9} C ${lx+4} ${ly-17} ${lx-15} ${ly-15} ${lx-15} ${ly-1} C ${lx-15} ${ly+13} ${lx+4} ${ly+15} ${lx+13} ${ly+6} C ${lx+19} ${ly-1} ${lx+14} ${ly-12} ${lx+5} ${ly-14}"/>`;
+  svg.innerHTML = s;
+}
+function drawTakes(){
+  const tb = $('#takes tbody');
+  tb.innerHTML = DATA.takes.map(t=>`<tr data-no="${t.no}"><td><b>${t.date}</b>テイク ${t.no}</td><td class="ms">${t.ms}<small>ms</small></td><td class="n">${t.match}<span class="u">%</span></td><td class="n">${t.missExtra}<span class="u">個</span></td>
+    <td><button class="ic" aria-label="テイク ${t.no} を聴く"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4 2.5v11l9-5.5z" fill="currentColor"/></svg></button></td>
+    <td><button class="ic more" aria-label="テイク ${t.no} の操作" data-no="${t.no}"><svg width="18" height="18" viewBox="0 0 18 18"><circle cx="3.5" cy="9" r="1.6" fill="currentColor"/><circle cx="9" cy="9" r="1.6" fill="currentColor"/><circle cx="14.5" cy="9" r="1.6" fill="currentColor"/></svg></button></td></tr>`).join('');
+}
+/* ---------- 帯(診断) ---------- */
+function drawBand(){
+  const {prevMs,curMs,noiseBandMs:bw} = DATA.diag; const L=6,R=322, max=30;
+  const x = v => L + v/max*(R-L);
+  let s = `<defs><pattern id="hatch2" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(-35)"><rect width="1" height="5" fill="var(--ink-2)" opacity=".5"/></pattern></defs>`;
+  s+=`<line x1="${L}" x2="${R}" y1="24" y2="24" stroke="var(--ink-3)" stroke-width="1"/>`;
+  [0,10,20,30].forEach(v=>{ s+=`<line x1="${x(v)}" x2="${x(v)}" y1="21" y2="27" stroke="var(--ink-3)"/><text x="${x(v)}" y="48" text-anchor="middle">${v}</text>`});
+  s+=`<rect x="${x(prevMs-bw)}" y="14" width="${x(prevMs+bw)-x(prevMs-bw)}" height="20" fill="url(#hatch2)" stroke="var(--ink-2)" stroke-width=".8" stroke-dasharray="2 2"/>`;
+  s+=`<line x1="${x(prevMs)}" x2="${x(prevMs)}" y1="10" y2="38" stroke="var(--ink-2)" stroke-width="1.6"/><text x="${x(prevMs)+4}" y="8" text-anchor="start">前回 14</text>`;
+  s+=`<line x1="${x(curMs)}" x2="${x(curMs)}" y1="12" y2="36" stroke="var(--ink)" stroke-width="2.4"/><text x="${x(curMs)-3}" y="8" text-anchor="end" style="display:none"></text>`;
+  s+=`<text x="${x(curMs)-4}" y="8" text-anchor="end" style="fill:var(--ink)">今回 13</text>`;
+  $('#bandSvg').innerHTML = s;
+}
+/* ---------- 二段譜(D02) ---------- */
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+function drawStaff(){
+  const rnd = mulberry32(20260923);
+  const cur = [], prev = [];
+  for(let i=1;i<=25;i++){ // 格子上の 25 音 + 余分 1 = 今回 26 音
+    prev.push({i, r: i===7? 28 : (rnd()*2-1)*10});
+    cur.push({i, r: i===7? 62 : (rnd()*2-1)*10, miss: i===21});
+  }
+  // 表示番号: 今回の 18 音目 = 余分(17 と 18 の間)、22 音目 = 弾き忘れ
+  const svg = $('#staff'); const SC=2, per=13, L=26, R=322, stepW=(R-L)/per;
+  let s = `<defs><pattern id="hx" width="3" height="3" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="1.2" height="3" fill="var(--red)"/></pattern></defs>`;
+  const sys = [{from:1,to:13,y:16},{from:14,to:26,y:136}];
+  // 番号付け: 表示上の音番号 n(1..26)。n<=17 は格子 n、n=18 は余分、n>=19 は格子 n-1
+  const items=[]; for(let n=1;n<=26;n++){ if(n===18) items.push({n,extra:true,g:17.5}); else { const g=n<18?n:n-1; items.push({n,g,p:prev[g-1],c:cur[g-1]});}}
+  sys.forEach(sy=>{
+    const yP=sy.y+14, yC=sy.y+70;
+    s+=`<text class="lab" x="0" y="${yP+4}">前回</text><text class="lab" x="0" y="${yC+4}" style="fill:var(--red)">今回</text>`;
+    s+=`<line x1="${L}" x2="${R}" y1="${yP}" y2="${yP}" stroke="var(--ink-3)" stroke-width=".8"/><line x1="${L}" x2="${R}" y1="${yC}" y2="${yC}" stroke="var(--ink-3)" stroke-width=".8"/>`;
+    items.filter(it=>it.n>=sy.from&&it.n<=sy.to).forEach(it=>{
+      const k = it.n - sy.from; const bx = L + stepW*(k+.5);
+      if(k%4===0) s+=`<line x1="${bx-stepW*.5}" x2="${bx-stepW*.5}" y1="${yP-14}" y2="${yC+14}" stroke="var(--grid-major)" stroke-width="1"/>`;
+      s+=`<text x="${bx}" y="${yC+30}" text-anchor="middle">${it.n}</text>`;
+      if(it.extra){ s+=`<rect x="${bx-3.5}" y="${yC-10}" width="7" height="20" fill="url(#hx)" stroke="var(--red)" stroke-width="1"/>`; return;}
+      const xp = bx + it.p.r/DATA.diag.gridMs*stepW*SC, xc = bx + it.c.r/DATA.diag.gridMs*stepW*SC;
+      s+=`<rect x="${xp-1}" y="${yP-10}" width="2" height="20" fill="var(--ink)"/>`;
+      if(it.c.miss){ s+=`<rect x="${bx-3.5}" y="${yC-10}" width="7" height="20" fill="none" stroke="var(--red)" stroke-width="1.2"/>`; }
+      else { s+=`<line x1="${xp}" y1="${yP+11}" x2="${xc}" y2="${yC-11}" stroke="var(--ink-3)" stroke-width="${it.n===7?1.4:.9}"/><rect x="${xc-1.2}" y="${yC-10}" width="2.4" height="20" fill="var(--red)"/>`; }
+      if(it.n===7){ s+=`<path class="redc" d="M ${xc+8} ${yC-13} C ${xc+3} ${yC-19} ${xc-10} ${yC-17} ${xc-10} ${yC-2} C ${xc-10} ${yC+14} ${xc+6} ${yC+16} ${xc+10} ${yC+4} C ${xc+12} ${yC-6} ${xc+9} ${yC-15} ${xc+2} ${yC-17}"/>`;
+        s+=`<text x="${xc-2}" y="${yC-22}" text-anchor="middle" style="fill:var(--red);font-size:11px;paint-order:stroke;stroke:var(--paper);stroke-width:3px">+62ms</text>`; }
+    });
+  });
+  svg.innerHTML = s;
+}
+
+/* ---------- ルーター(ハッシュ + pushState) ---------- */
+const SCREENS = ['home','phrase','rec','diag','extra'];
+let current = null, recTimer = null, countTimer = null, recStart = 0;
+function show(route, opts={}){
+  let id = route, scrollTo = null;
+  if(route==='diag-bottom'){ id='diag'; scrollTo='ev'; }
+  if(!SCREENS.includes(id)) id='home';
+  $$('.screen').forEach(s=>s.classList.toggle('on', s.id===id));
+  document.querySelector('meta[name=theme-color]').content = id==='rec' ? '#1E1B16' : getComputedStyle(document.documentElement).getPropertyValue('--paper').trim();
+  stopRec();
+  if(id==='rec') startRec(!!opts.count);
+  window.scrollTo(0,0); if(!scrollTo) requestAnimationFrame(()=>window.scrollTo(0,0));
+  if(id==='diag'){
+    if(opts.anim) runAnim(); else document.body.classList.remove('anim','play');
+    if(scrollTo) requestAnimationFrame(()=>document.getElementById(scrollTo).scrollIntoView({block:'start'}));
+  }
+  current = route;
+}
+function go(route, opts){ history.pushState({route}, '', location.pathname + location.search + '#' + route); show(route, opts); }
+window.addEventListener('popstate', ()=>{
+  const r = (location.hash||'#home').slice(1);
+  if(current==='rec' && r!=='rec'){ history.pushState({route:'rec'}, '', location.pathname + location.search + '#rec'); $('#dlg').classList.add('on'); $('#dlgKeep').focus(); return; }
+  show(r);
+});
+$('#dlgKeep').onclick = ()=> $('#dlg').classList.remove('on');
+$('#dlgDrop').onclick = ()=>{ $('#dlg').classList.remove('on'); current=null; history.back(); };
+
+document.addEventListener('click', e=>{
+  const g = e.target.closest('[data-go]'); if(g){ go(g.dataset.go, {count: g.dataset.count==='1'}); return; }
+  const b = e.target.closest('[data-back]'); if(b){ history.back(); return; }
+  const sc = e.target.closest('[data-scroll]'); if(sc){ document.getElementById(sc.dataset.scroll).scrollIntoView({behavior:'smooth'}); history.replaceState(null,'',location.pathname+location.search+'#diag-bottom'); current='diag-bottom'; return; }
+  const m = e.target.closest('.more'); if(m){ openMenu(m); return; }
+  if(!e.target.closest('.menu')) closeMenu();
+});
+/* 戻るの受け皿: 直接ハッシュで開いたとき、1 つ前に #home を積む */
+(function boot(){
+  const r = (location.hash||'#home').slice(1);
+  if(r!=='home' && !history.state){ history.replaceState({route:'home'}, '', location.pathname+location.search+'#home'); history.pushState({route:r}, '', location.pathname+location.search+'#'+r); }
+  drawChart(); drawTakes(); drawBand(); drawStaff();
+  show(r, {anim: params.get('anim')==='1' && (r==='diag')});
+})();
+
+/* ---------- 伏せたノート ---------- */
+function startRec(withCount){
+  const face = $('#face'); const cnt = $('#count'); const hint = $('#hint');
+  hint.style.opacity = 1; cnt.textContent='';
+  const beat = 60000/58;
+  const begin = ()=>{ recStart = performance.now() - (withCount?0:14000); tick(); recTimer = setInterval(tick, 50);
+    if(withCount) setTimeout(()=>hint.style.opacity=0, 3000); };
+  if(withCount){ let n=4; cnt.textContent=n; countTimer=setInterval(()=>{ n--; if(n>0) cnt.textContent=n; else { clearInterval(countTimer); cnt.textContent=''; begin(); } }, beat); drawTrace(0); $('#recTime').textContent='0:00'; }
+  else begin();
+  face.onclick = ()=>{ if(performance.now()-recStart < 1500) return; stopRec(); history.replaceState({route:'diag'},'',location.pathname+location.search+'#diag'); show('diag',{anim:true}); };
+}
+function stopRec(){ clearInterval(recTimer); clearInterval(countTimer); }
+function tick(){ const t=(performance.now()-recStart)/1000; const s=Math.floor(t); $('#recTime').textContent = `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`; drawTrace(t); }
+function drawTrace(t){
+  const L=34, R=356, dur=40, len = Math.min(1, t/dur)*(R-L);
+  const rnd = mulberry32(7); let d=`M ${L} 30`, x=L, y=30;
+  for(x=L+3; x<=L+len; x+=3){ const a = (Math.sin(x*.37)+Math.sin(x*.11))*1.6 + (rnd()-.5)*2.4; y=30+a; d+=` L ${x.toFixed(1)} ${y.toFixed(1)}`; }
+  $('#tracePath').setAttribute('d', d);
+  const tip=$('#traceTip'); tip.setAttribute('cx', Math.max(L,x-3)); tip.setAttribute('cy', y);
+}
+
+/* ---------- 体験の核 ---------- */
+function runAnim(){
+  const b = document.body; b.classList.remove('play'); b.classList.add('anim');
+  void b.offsetWidth;
+  setTimeout(()=>{ b.classList.add('play'); }, params.get('anim')==='1' && !runAnim.done ? 700 : 30);
+  setTimeout(()=>{ b.classList.remove('anim','play'); }, 3600);
+  runAnim.done = true;
+}
+
+/* ---------- 捨てる導線 ---------- */
+let toastTimer=null;
+function toast(msg, onUndo){ const t=$('#toast'); $('#toastT').textContent=msg; let n=5; $('#toastN').textContent=n; t.classList.add('on'); clearInterval(toastTimer);
+  toastTimer=setInterval(()=>{ n--; $('#toastN').textContent=n; if(n<=0){ clearInterval(toastTimer); t.classList.remove('on'); } },1000);
+  $('#undo').onclick=()=>{ clearInterval(toastTimer); t.classList.remove('on'); onUndo&&onUndo(); }; }
+$('#discard').onclick = ()=>{ const btn=$('#discard'); btn.classList.add('gone'); btn.textContent='捨てた'; toast('テイク 6 を捨てました', ()=>{ btn.classList.remove('gone'); btn.textContent='捨てる'; }); };
+function openMenu(btn){ closeMenu(); const no=btn.dataset.no; const r=btn.getBoundingClientRect(); const m=document.createElement('div'); m.className='menu';
+  m.style.top=(r.bottom+scrollY)+'px'; m.style.right='16px';
+  m.innerHTML=`<button data-a="ref">お手本にする</button><button class="del" data-a="del">テイク ${no} を捨てる</button>`;
+  document.body.appendChild(m);
+  m.onclick=e=>{ const a=e.target.dataset.a; const tr=document.querySelector(`#takes tr[data-no="${no}"]`); closeMenu();
+    if(a==='del'){ tr.classList.add('gone'); toast(`テイク ${no} を捨てました`, ()=>tr.classList.remove('gone')); } }; }
+function closeMenu(){ $$('.menu').forEach(m=>m.remove()); }
+$('#resolveBtn').onclick = ()=> $('#q3').classList.toggle('on');
+
+/* ---------- 固定の「もう 1 回」 ---------- */
+new IntersectionObserver(es=>es.forEach(e=>$('#miniBar').classList.toggle('on', !e.isIntersecting && e.boundingClientRect.top<0))).observe($('#again'));
+
+/* ---------- 開発用: テーマ ---------- */
+$('#dev').onclick = ()=>{ const d = document.documentElement; const dark = d.dataset.theme!=='dark'; if(dark) d.dataset.theme='dark'; else delete d.dataset.theme;
+  const p=new URLSearchParams(location.search); dark?p.set('theme','dark'):p.delete('theme'); history.replaceState(history.state,'',location.pathname+(p.toString()?'?'+p:'')+location.hash); };
+</script>
+</body>
+</html>
