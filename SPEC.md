@@ -201,7 +201,8 @@ SongThroughCompletion { id, threadId, at, durationMs, note? }
 **エンジン切り替え（`engine.ts`、2026-09-22）**: `transcribe()` は 3 つのエンジンを持つ。既定は Basic Pitch。
 `student` は GAPS 論文の公開モデルを蒸留した小型 CRNN（`src/student/`、ONNX Runtime Web の WASM、4 MB、101 万パラメータ）で、
 ブラウザで log-mel（16 kHz、100 フレーム/秒、229 mel）を作って推論し、onset の局所最大 + frame ゲートで音符化する。
-本番経路で GAPS test 30 曲 F1 87.2%（Basic Pitch 80.2%）、ヘッドレス Chrome で実時間の 0.07 倍。検証画面「0. 推論エンジン」で選ぶ（端末ごと）。
+本番経路で GAPS test 30 曲 F1 90.2%、GuitarSet test 60 クリップ 87.9%（Basic Pitch は 80.2 / 81.3%）、ヘッドレス Chrome で実時間の 0.07 倍。
+検証画面「0. 推論エンジン」で選ぶ（端末ごと、既定は Basic Pitch）。経緯と数字は `FINETUNE_NOTES.md` 12〜18 節。
 
 **リモート推論（暫定、2026-09-21）**: `remoteTranscribe.ts`。検証画面で URL を設定すると `transcribe()` は Basic Pitch を回さず、
 Mac 上の `train/serve_transcribe.py`（GAPS 論文の公開モデル、GAPS test F1 94.7%）に前処理済み PCM を送って音符列を受け取る。

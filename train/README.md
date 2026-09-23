@@ -88,7 +88,19 @@ http の LAN アドレスではスマホの録音が動かない。`@vitejs/plug
 
 評価と比較は `eval_hfmt.py`(GAPS / GuitarSet test を MIDI に書き出す)と `app/eval/midi-score.mjs`。ONNX 変換とブラウザ内推論の実測、蒸留の計画は `FINETUNE_NOTES.md` 11〜12 節。
 
-## 蒸留(段階 1: 教師のソフトラベル)
+## 蒸留(公開モデル → ブラウザで動く 4 MB の生徒)
+
+```sh
+.venv-hfmt/bin/python distill_labels.py --shifts 0,-2,2                 # 段階 1: 教師のソフトラベル(~/dev/guitar-data/distill/、8.7 GB、単独で約 4 時間)
+.venv-hfmt/bin/python distill.py --preset m --steps 350 --epochs 30      # 段階 2: 学習(MPS、約 8 時間)。出力 ~/dev/guitar-data/runs/distill/<timestamp>/
+.venv-hfmt/bin/python eval_student.py <run-dir> --ckpt model.last.pt    # GAPS / GuitarSet test を広い閾値グリッドで採点し ONNX を書く
+cp <run-dir>/model.last.onnx ../app/public/student/model.onnx           # アプリに載せる(ブラウザ側は app/src/student/)
+```
+
+- 生徒は `student.py`(教師と同じ骨格 1 本 + onset 精密化 GRU、プリセット s / m / l)。v2 = m で GAPS test F1 90.1 / GuitarSet 88.2(教師 94.7 / 90.4、Basic Pitch 81 / 82)
+- 後処理は onset 0.3 / frame ゲート 0.8(`app/src/student/postprocess.ts` と同じ)。経緯は `FINETUNE_NOTES.md` 12〜18 節
+
+### 段階 1 の詳細
 
 ```sh
 .venv-hfmt/bin/python distill_labels.py --shifts 0,-2,2      # ~/dev/guitar-data/distill/<dataset>/<split>/<id>_s<shift>.npz
