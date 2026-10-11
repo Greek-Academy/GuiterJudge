@@ -1,0 +1,634 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>G2 3 本で閉じる小箱 — モック</title>
+<style>
+:root{
+  --bg:#F4EBDC; --card:#FFF8EC; --label:#FFF8EC; --label-ink:#2B2420; --label-acc:#E0612F; --label-sub:#76695E;
+  --wood:#C8A677; --wood-hi:#D5B98D; --wood-lo:#A4845A; --wood-in:#B08D5F; --slot:#8F6E45; --lid:#CFAE80;
+  --ink:#2B2420; --ink2:#6E6258; --acc:#E0612F; --acc-hi:#FFB48A; --acc-lo:#A83E17; --acc-tint:#F8DCCB;
+  --prev:#B5A898; --line:#E2D5C0; --shadow:rgba(70,45,20,.45);
+  --sans:"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP","Yu Gothic",system-ui,sans-serif;
+  --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+[data-theme=dark]{
+  --bg:#1C1814; --card:#27211B; --label:#EDE3D1; --label-ink:#2B2420; --label-acc:#C9521F; --label-sub:#6E6258;
+  --wood:#6B5438; --wood-hi:#7B6243; --wood-lo:#4E3C27; --wood-in:#584430; --slot:#3A2C1D; --lid:#76603F;
+  --ink:#EDE3D1; --ink2:#A89A88; --acc:#FF8A5B; --acc-hi:#FFC3A3; --acc-lo:#C0532A; --acc-tint:#4A2E22;
+  --prev:#857869; --line:#3A3128; --shadow:rgba(0,0,0,.6);
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.num,.mono{font-family:var(--mono);font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+small{font-size:.8em}
+
+/* 画面切替ナビ */
+#chrome{position:sticky;top:0;z-index:20;display:flex;gap:4px;align-items:center;overflow-x:auto;padding:6px 8px;background:var(--bg);border-bottom:1px solid var(--line);font-size:11px;scrollbar-width:none}
+#chrome a{white-space:nowrap;padding:4px 8px;border-radius:99px;color:var(--ink2);text-decoration:none;border:1px solid var(--line)}
+#chrome a.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+#chrome button{flex:0 0 auto;border:1px solid var(--line);background:none;border-radius:99px;padding:3px 8px;font-size:11px}
+body.shot #chrome{display:none}
+body.shot{width:390px}
+body.shot .scr{margin:0}
+body.noanim *,body.noanim *::before,body.noanim *::after{animation:none!important;transition:none!important}
+
+.scr>*{min-width:0;max-width:100%}
+.shelf-row,.shelf{min-width:0}
+html,body{overflow-x:hidden}
+.scr{width:100%;max-width:390px;margin:0 auto;padding:14px 18px 20px;min-height:100dvh;display:flex;flex-direction:column;gap:14px}
+.top{display:flex;justify-content:space-between;align-items:center;min-height:32px}
+.date{font-size:15px;font-weight:700}
+.date span{color:var(--ink2);font-weight:500;margin-left:4px}
+.pill{border:1px solid var(--line);background:var(--card);border-radius:99px;padding:6px 12px;font-size:13px;color:var(--ink2)}
+.pill b{color:var(--ink)}
+.note{font-size:12px;color:var(--ink2);line-height:1.5}
+.h2{font-size:14px;font-weight:700;margin:0;display:flex;align-items:baseline;gap:8px}
+.h2 small{font-weight:400;color:var(--ink2);font-size:11px}
+
+/* しおり */
+.shiori{position:relative;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:13px 14px 12px 46px;box-shadow:0 8px 18px -14px var(--shadow);margin-top:10px}
+.shiori::before{content:"";position:absolute;left:15px;top:-12px;width:16px;height:66px;background:var(--acc);clip-path:polygon(0 0,100% 0,100% 100%,50% 84%,0 100%);transform-origin:50% 0;animation:sway 1.2s ease-out 1}
+@keyframes sway{0%{transform:rotate(6deg)}35%{transform:rotate(-4deg)}65%{transform:rotate(2deg)}100%{transform:rotate(0)}}
+.shiori .from{font-size:12px;color:var(--ink2)}
+.shiori .msg{font-size:21px;font-weight:800;line-height:1.35;margin:3px 0 8px;letter-spacing:.01em}
+.shiori .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.chip{border:1px solid var(--line);background:none;border-radius:99px;padding:5px 11px;font-size:12px;color:var(--ink2)}
+.chip.acc{border-color:var(--acc);color:var(--acc);font-weight:700}
+.shiori.ghost{background:none;border-style:dashed;box-shadow:none}
+.shiori.ghost::before{opacity:.35;animation:none}
+.shiori.ghost .msg{font-size:15px;font-weight:600;color:var(--ink2)}
+
+/* 箱 */
+.box{background:
+   repeating-linear-gradient(90deg,rgba(60,35,10,.05) 0 2px,transparent 2px 11px),
+   linear-gradient(var(--wood-hi),var(--wood));
+  border-radius:16px;padding:10px 10px 12px;box-shadow:0 3px 0 var(--wood-lo),0 14px 26px -16px var(--shadow)}
+.box-label{background:var(--label);color:var(--label-ink);border-radius:6px;padding:8px 12px;box-shadow:0 1px 0 rgba(0,0,0,.12);display:flex;justify-content:space-between;align-items:center;gap:8px}
+.box-label .t{font-weight:800;font-size:16px}
+.box-label .s{font-size:11.5px;color:var(--label-sub);margin-top:2px}
+.box-label .tempo{font-family:var(--mono);font-weight:700;font-size:15px;white-space:nowrap}
+.tray{margin-top:10px;background:var(--wood-in);border-radius:12px;box-shadow:inset 0 3px 9px rgba(50,28,8,.38);padding:16px 6px 10px;display:flex;justify-content:space-around}
+.slot{display:flex;flex-direction:column;align-items:center;gap:6px;background:none;border:0;padding:0;min-width:72px}
+.hole{width:72px;height:72px;border-radius:50%;background:var(--slot);box-shadow:inset 0 5px 9px rgba(0,0,0,.38),0 1px 0 rgba(255,255,255,.22);display:grid;place-items:center;position:relative}
+.tray.many .hole{width:56px;height:56px}
+.tray.many .ball{width:40px;height:40px}
+.tray.many .slot{min-width:56px}
+.ball{width:52px;height:52px;border-radius:50%;background:radial-gradient(circle at 34% 30%,var(--acc-hi),var(--acc) 52%,var(--acc-lo));box-shadow:0 3px 4px rgba(0,0,0,.3)}
+.ball.bounce{animation:kotonBall .32s ease-out}
+@keyframes kotonBall{0%{transform:translateY(-18px)}60%{transform:translateY(0)}78%{transform:translateY(-2px)}100%{transform:translateY(0)}}
+.hole.next{outline:2.5px dashed var(--acc);outline-offset:4px;animation:breathe 1.8s ease-in-out infinite}
+.hole.next .plus{font-size:30px;font-weight:300;color:var(--acc-hi);line-height:1}
+[data-theme=dark] .hole.next .plus{color:var(--acc)}
+@keyframes breathe{50%{outline-offset:8px;transform:scale(1.04)}}
+.hole .tagm{position:absolute;bottom:-2px;font-size:10px;font-weight:700;background:var(--label);color:var(--label-ink);border-radius:99px;padding:1px 7px}
+.cap{font-size:15px;min-height:20px;color:var(--ink)}
+.cap small{font-size:11px;font-weight:500;margin-left:1px}
+.cap.hint{font-family:var(--sans);font-size:11.5px;font-weight:700;color:var(--ink)}
+[data-theme=light] .cap.hint, :root:not([data-theme=dark]) .cap.hint{color:#5A3A1C}
+.box-foot{margin-top:10px;text-align:center;font-size:13.5px;font-weight:700;color:#4A301A}
+[data-theme=dark] .box-foot{color:var(--ink)}
+.under{display:flex;justify-content:space-between;gap:8px}
+.ghostbtn{flex:1;border:1px solid var(--line);background:var(--card);border-radius:12px;padding:10px 8px;font-size:13px;color:var(--ink2)}
+
+/* 棚 */
+.shelf{display:flex;flex-direction:column;gap:8px}
+.shelf-row{display:flex;gap:9px;overflow-x:auto;padding:2px 2px 0;scrollbar-width:none}
+.mini{flex:0 0 76px;background:linear-gradient(var(--wood-hi),var(--wood));border-radius:9px;padding:5px;box-shadow:0 2px 0 var(--wood-lo);border:0}
+.mini .lab{background:var(--label);color:var(--label-ink);border-radius:4px;padding:5px 4px 4px;text-align:center}
+.mini .d{font-size:10.5px;color:var(--label-sub)}
+.mini .r{font-family:var(--mono);font-weight:800;font-size:15px;line-height:1.2}
+.mini .r.one{font-size:13px}
+.mini svg{display:block;margin:3px auto 0}
+.plank{height:9px;border-radius:3px;background:linear-gradient(var(--wood),var(--wood-lo));box-shadow:0 5px 10px -6px var(--shadow)}
+.others{display:flex;justify-content:space-between;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:13px}
+.others span{color:var(--ink2)}
+
+/* 戻り道 */
+.road{position:relative;padding-left:40px;display:flex;flex-direction:column;gap:12px}
+.road::before{content:"";position:absolute;left:15px;top:14px;bottom:30px;border-left:3px dotted var(--acc)}
+.stop{position:relative;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.stop .dot{position:absolute;left:-34px;top:12px;width:22px;height:22px;border-radius:50%;background:var(--bg);border:3px solid var(--acc);display:grid;place-items:center;font-size:11px;font-weight:800;color:var(--acc)}
+.stop.here .dot{background:var(--acc);color:var(--bg);box-shadow:0 0 0 5px var(--acc-tint)}
+.stop h3{margin:0;font-size:18px;font-weight:800}
+.stop p{margin:4px 0 0;font-size:13px;color:var(--ink2);line-height:1.5}
+.stop .act{margin-top:10px;display:flex;gap:8px;flex-wrap:wrap}
+.btn{border:0;border-radius:14px;background:var(--acc);color:#fff;font-weight:800;padding:12px 16px;font-size:15px}
+[data-theme=dark] .btn{color:#1C1814}
+.btn.ink{background:var(--ink);color:var(--bg)}
+.btn.line{background:none;border:1.5px solid var(--line);color:var(--ink)}
+.quote{font-size:13px;border-left:3px solid var(--acc);padding:2px 0 2px 8px;margin-top:8px;color:var(--ink)}
+
+/* 録音中 */
+.rec{padding:0;gap:0}
+.rec-top{padding:18px 18px 0;display:flex;align-items:center;gap:14px}
+.mtray{display:flex;gap:7px;background:var(--wood-in);padding:7px;border-radius:12px;box-shadow:inset 0 2px 6px rgba(50,28,8,.4)}
+.mtray i{width:28px;height:28px;border-radius:50%;background:var(--slot);display:block;box-shadow:inset 0 2px 4px rgba(0,0,0,.35)}
+.mtray i.full{background:radial-gradient(circle at 34% 30%,var(--acc-hi),var(--acc) 52%,var(--acc-lo))}
+.mtray i.now{outline:2.5px solid var(--acc);outline-offset:2px;animation:throb .9s ease-in-out infinite}
+@keyframes throb{50%{outline-offset:5px;outline-color:transparent}}
+.take-no{font-size:32px;font-weight:800;line-height:1}
+.take-sub{white-space:nowrap;font-size:12.5px;color:var(--ink2);margin-top:4px}
+.recdot{white-space:nowrap;margin-left:auto;font-size:13px;font-weight:800;color:var(--acc);display:flex;align-items:center;gap:6px}
+.recdot i{width:12px;height:12px;border-radius:50%;background:var(--acc);animation:blink 1.1s steps(2,start) infinite}
+@keyframes blink{50%{opacity:.25}}
+.beatwrap{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.beat{font-family:var(--mono);font-weight:800;font-size:200px;line-height:.86;font-variant-numeric:tabular-nums}
+.bdots{display:flex;gap:14px;margin-top:6px}
+.bdots i{width:16px;height:16px;border-radius:50%;background:var(--line)}
+.bdots i.on{background:var(--acc)}
+.elapsed{margin-top:10px;font-size:18px;color:var(--ink2)}
+.stopbtn{height:50dvh;min-height:380px;width:100%;border:0;background:var(--ink);color:var(--bg);border-radius:30px 30px 0 0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px}
+.stopbtn .sq{width:74px;height:74px;border-radius:14px;background:var(--acc)}
+.stopbtn .lbl{font-size:40px;font-weight:800;letter-spacing:.08em}
+.stopbtn .nx{font-size:14px;opacity:.78;text-align:center;line-height:1.6}
+.stopbtn .nx b{color:var(--acc)}
+
+/* 1 本ごとの診断 */
+.dhead{display:flex;align-items:center;gap:12px}
+.dhead .mtray i{width:24px;height:24px}
+.dhead .mtray i.new{outline:2.5px solid var(--acc);outline-offset:2px}
+.dhead .tt{font-size:13px;color:var(--ink2)}
+.dhead .tt b{display:block;color:var(--ink);font-size:18px}
+.bignum{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.bignum .n{font-size:64px;line-height:1}
+.bignum .u{font-size:22px;font-weight:700}
+.verdict{font-size:22px;font-weight:800;border:2px solid var(--ink);border-radius:99px;padding:2px 12px;align-self:center}
+.bignum .pv{font-size:18px;color:var(--ink2);font-weight:700}
+.bandnote{font-size:12.5px;color:var(--ink2);margin-top:4px}
+.abacus{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:6px 0 2px}
+.abacus svg{display:block;width:100%;height:auto}
+.skw{stroke:var(--line);stroke-width:2;stroke-linecap:round}
+[data-theme=dark] .skw{stroke:#4A3F34}
+.skw.head{stroke:var(--prev);stroke-width:2.5}
+.ringp{fill:none;stroke:var(--prev);stroke-width:2.2}
+.bead{fill:url(#beadg)}
+.bead.out{stroke:var(--card);stroke-width:1.5}
+.halo{fill:var(--acc);opacity:.18}
+.tag{font:800 12px var(--mono);fill:var(--acc);text-anchor:middle}
+.bt{font:600 9.5px var(--mono);fill:var(--ink2);text-anchor:middle}
+.xtra{fill:none;stroke:var(--acc);stroke-width:1.8;stroke-dasharray:2.5 2}
+.drop{animation:koton .34s cubic-bezier(.3,.7,.4,1) both;transform-box:fill-box}
+@keyframes koton{0%{transform:translateY(-34px);opacity:0}55%{opacity:1}72%{transform:translateY(0)}86%{transform:translateY(-2px)}100%{transform:translateY(0)}}
+.legend{display:flex;gap:12px;justify-content:center;font-size:11px;color:var(--ink2);padding:0 8px 6px;flex-wrap:wrap}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:50%;vertical-align:-1px;margin-right:3px}
+.legend i.c{background:var(--acc)} .legend i.p{border:2px solid var(--prev)}
+.finding{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:16px;font-weight:800;background:var(--acc-tint);border-radius:12px;padding:10px 12px}
+.finding .chip{background:var(--card);flex:0 0 auto}
+.metrics{display:flex;gap:6px;font-size:12px;color:var(--ink2)}
+.metrics div{flex:1;border:1px solid var(--line);border-radius:10px;padding:6px 8px;background:var(--card)}
+.metrics b{display:block;font-family:var(--mono);font-size:14px;color:var(--ink)}
+.after{animation:fadein .35s ease-out both;animation-delay:1.55s}
+@keyframes fadein{from{opacity:0;transform:translateY(4px)}}
+.nextbar{margin-top:auto;display:flex;flex-direction:column;gap:8px}
+.gonext{position:relative;overflow:hidden;border:0;border-radius:18px;background:var(--ink);color:var(--bg);padding:18px 18px;display:flex;justify-content:space-between;align-items:center;font-size:22px;font-weight:800}
+.gonext .cd{font-size:14px;font-weight:600;opacity:.85}
+.gonext .cd b{font-size:26px;color:var(--acc);margin-left:4px}
+.gonext .prog{position:absolute;left:0;bottom:0;height:5px;background:var(--acc);width:0}
+.row3{display:flex;gap:8px}
+.row3 button{flex:1;border:1px solid var(--line);background:var(--card);border-radius:12px;padding:10px 4px;font-size:13px;color:var(--ink2)}
+
+/* 3 本目 */
+.cel{align-items:center;text-align:center}
+.cel{justify-content:center}
+.cel .ttl{font-size:30px;font-weight:800}
+.cel .sub{font-size:13px;color:var(--ink2)}
+.cel svg{width:100%;height:auto;margin-top:6px}
+.trio{display:flex;gap:18px;justify-content:center;font-size:30px}
+.trio span small{font-size:14px;color:var(--ink2)}
+.lidtext{font-size:15px;font-weight:700}
+
+/* 閉じた箱 */
+.closed{background:repeating-linear-gradient(90deg,rgba(60,35,10,.05) 0 2px,transparent 2px 11px),linear-gradient(var(--lid),var(--wood));border-radius:16px;padding:14px 14px 16px;box-shadow:0 3px 0 var(--wood-lo),0 16px 28px -16px var(--shadow);position:relative}
+.closed::after{content:"";position:absolute;right:30px;bottom:-22px;width:18px;height:40px;background:var(--acc);clip-path:polygon(0 0,100% 0,100% 100%,50% 82%,0 100%)}
+.closed.pending::after{opacity:.35}
+.biglabel{background:var(--label);color:var(--label-ink);border-radius:8px;padding:12px 14px 12px;box-shadow:0 1px 0 rgba(0,0,0,.12)}
+.biglabel .meta{font-size:12px;color:var(--label-sub);display:flex;justify-content:space-between}
+.biglabel .k{font-size:14px;font-weight:700;margin-top:6px}
+.biglabel .v{font-family:var(--mono);font-weight:800;font-size:48px;line-height:1.05;font-variant-numeric:tabular-nums;letter-spacing:-.03em}
+.biglabel .v small{font-size:20px;margin-left:4px}
+.biglabel .three{font-family:var(--mono);font-weight:700;font-size:13px;color:var(--label-sub);margin-top:2px}
+.bandcmp{margin-top:10px;border-top:1px dashed #D8CBB5;padding-top:8px}
+.bandcmp svg{display:block;width:100%;height:auto}
+.overlap{display:flex;align-items:center;gap:8px;margin-top:4px;font-size:12.5px;color:var(--label-sub)}
+.overlap b{flex:0 0 auto;white-space:nowrap;font-size:15px;color:var(--label-ink);border:2px solid var(--label-ink);border-radius:99px;padding:1px 10px}
+.opts{display:flex;flex-direction:column;gap:7px}
+.opt{display:flex;align-items:center;gap:10px;border:1.5px solid var(--line);background:var(--card);border-radius:14px;padding:11px 14px;font-size:16px;font-weight:700;text-align:left}
+.opt i{width:18px;height:18px;border-radius:50%;border:2px solid var(--prev);flex:0 0 auto}
+.opt.sel{border-color:var(--acc)}
+.opt.sel i{border:5px solid var(--acc)}
+.opt span{font-size:12px;color:var(--ink2);font-weight:500;margin-left:auto}
+.memo{display:flex;gap:8px}
+.memo .chip{padding:9px 14px;font-size:13px}
+
+/* 1 か月後 */
+.month svg{display:block;width:100%;height:auto}
+.mcard{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px 8px 6px}
+.cmp{display:flex;gap:8px}
+.cmp button{flex:1;border:1.5px solid var(--line);background:var(--card);border-radius:14px;padding:10px;text-align:left;font-size:12px;color:var(--ink2)}
+.cmp button b{display:block;font-size:15px;color:var(--ink)}
+.cmp button .num{font-size:13px;color:var(--ink)}
+</style>
+</head>
+<body>
+<nav id="chrome" aria-label="画面切替"></nav>
+<main id="app"></main>
+<script>
+/* ---------- パラメータ ---------- */
+const Q = new URLSearchParams(location.search);
+const SHOT = Q.get('shot')==='1' || Q.get('chrome')==='0';
+const ANIM = Q.get('anim')!=='0';
+let theme = Q.get('theme')==='dark' ? 'dark' : 'light';
+let sound = Q.get('mute')!=='1';
+if (SHOT) document.body.classList.add('shot');
+if (!ANIM) document.body.classList.add('noanim');
+document.documentElement.dataset.theme = theme;
+
+/* ---------- ダミーデータ(現行アプリの文脈) ---------- */
+const T1 = { name:'16分のオルタネイト', sub:'Am ペンタ 5〜8 フレット · 16分', bpm:58 };
+const SHELF = [ // 録った日だけ。空いた日は詰める(新しい順)
+  { d:'9/29', lo:14, hi:18 }, { d:'9/27', lo:13, hi:16 }, { d:'9/26', lo:15, hi:15, one:true },
+  { d:'9/24', lo:14, hi:17 }, { d:'9/22', lo:15, hi:18 }, { d:'9/20', lo:14, hi:19 },
+];
+const GAP_SHELF = [ { d:'9/18', lo:15, hi:19 }, { d:'9/16', lo:15, hi:20 }, { d:'9/15', lo:17, hi:17, one:true }, { d:'9/12', lo:16, hi:21 } ];
+const MONTH = [ // 9 月の棚(録った日だけ)
+  ['9/2',52,19,26],['9/3',52,20,25],['9/5',52,18,24],['9/6',52,19,23],
+  ['9/8',55,17,22],['9/9',55,18,24],['9/11',55,17,21],['9/12',55,16,21],['9/15',55,17,17],['9/16',55,15,20],
+  ['9/18',58,15,19],['9/20',58,14,19],['9/22',58,15,18],['9/24',58,14,17],['9/26',58,15,15],['9/27',58,13,16],['9/29',58,14,18],['9/30',58,13,16]
+];
+// 26 音の残差(同じ種)。7 音目だけ +62ms、22 音目は弾き忘れ、17 と 18 の間に余分
+function rng(seed){ let s=seed; return ()=>{ s=(s*1103515245+12345)%2147483648; return s/2147483648; }; }
+const r1=rng(7), r2=rng(19), CUR=[], PREV=[];
+for (let i=0;i<26;i++){ CUR.push(Math.round((r1()*2-1)*9)); PREV.push(Math.round((r2()*2-1)*9)); }
+CUR[6]=62; PREV[6]=20;
+const MISSING=21;
+
+/* ---------- 状態 ---------- */
+const S = { count:3, take:2, flow:false };
+let timers = [];
+function clearTimers(){ timers.forEach(t=>{clearTimeout(t);clearInterval(t);cancelAnimationFrame(t);}); timers=[]; }
+
+/* ---------- 音と振動 ---------- */
+let AC=null, gest=false;
+function ac(){ if(!AC) AC=new (window.AudioContext||window.webkitAudioContext)(); if(AC.state==='suspended') AC.resume(); return AC; }
+const bufCache={};
+function ksBuf(f,dur){ // Karplus-Strong の撥弦
+  const c=ac(), key=f.toFixed(2)+dur; if(bufCache[key]) return bufCache[key];
+  const sr=c.sampleRate, n=Math.floor(sr*dur), N=Math.max(2,Math.round(sr/f));
+  const b=c.createBuffer(1,n,sr), d=b.getChannelData(0), ring=new Float32Array(N);
+  for(let i=0;i<N;i++) ring[i]=Math.random()*2-1;
+  let p=0; for(let i=0;i<n;i++){ const nx=(p+1)%N, v=ring[p]; ring[p]=0.4985*(ring[p]+ring[nx]); d[i]=v; p=nx; }
+  return bufCache[key]=b;
+}
+function pluck(f,t,g,dur){ const c=ac(), s=c.createBufferSource(); s.buffer=ksBuf(f,dur); const lp=c.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=2800; const gn=c.createGain(); gn.gain.value=g; s.connect(lp).connect(gn).connect(c.destination); s.start(t); }
+const CH = { IV:[146.83,220,293.66,369.99], V:[164.81,246.94,329.63,415.30], I:[110,164.81,220,277.18,329.63,440] };
+function chord(name){ if(!sound||!gest) return; const c=ac(), t=c.currentTime+.03, long=name==='I';
+  CH[name].forEach((f,i)=>pluck(f,t+i*(long?.04:.022),long?.17:.15,long?3.2:1.8)); }
+function knock(vol){ if(!sound||!gest) return; const c=ac(), t=c.currentTime, o=c.createOscillator(), g=c.createGain();
+  o.type='sine'; o.frequency.setValueAtTime(1150,t); o.frequency.exponentialRampToValueAtTime(430,t+.05);
+  g.gain.setValueAtTime(vol||.22,t); g.gain.exponentialRampToValueAtTime(.001,t+.08); o.connect(g).connect(c.destination); o.start(t); o.stop(t+.1); }
+function buzz(p){ try{ navigator.vibrate && navigator.vibrate(p); }catch(e){} }
+document.addEventListener('pointerdown',()=>{ gest=true; },{capture:true});
+
+/* ---------- 部品 ---------- */
+function bandMini(lo,hi,one){ // 10〜24ms の共通目盛り
+  const x=v=>4+(v-10)/14*56;
+  return `<svg width="64" height="10" viewBox="0 0 64 10" aria-hidden="true"><line x1="4" y1="5" x2="60" y2="5" stroke="#D8CBB5" stroke-width="2" stroke-linecap="round"/>`+
+    (one?`<circle cx="${x(lo)}" cy="5" r="3.2" fill="#6E6258"/>`:`<line x1="${x(lo)}" y1="5" x2="${x(hi)}" y2="5" stroke="#6E6258" stroke-width="6" stroke-linecap="round"/>`)+`</svg>`;
+}
+function miniBox(b){
+  const r = b.one ? `${b.lo}<small style="font-size:10px"> (1本)</small>` : `${b.lo}–${b.hi}`;
+  return `<button class="mini" aria-label="${b.d} の箱、揺れ ${b.one?b.lo+'ms 1 本':b.lo+'から'+b.hi+'ms'}"><div class="lab"><div class="d">${b.d}</div><div class="r ${b.one?'one':''}">${r}</div>${bandMini(b.lo,b.hi,b.one)}</div></button>`;
+}
+function shelf(list, title, sub){
+  return `<section class="shelf"><h2 class="h2">${title} <small>${sub}</small></h2><div class="shelf-row">${list.map(miniBox).join('')}</div><div class="plank"></div></section>`;
+}
+function slotHTML(kind, ms, extra){
+  if (kind==='full') return `<button class="slot" data-act="ball" aria-label="${ms}ms の 1 本"><span class="hole"><span class="ball"></span></span><span class="cap num">${ms}<small>ms</small></span></button>`;
+  if (kind==='next') return `<button class="slot" data-go="rec" aria-label="空きスロット。叩いて録る"><span class="hole next"><span class="plus">＋</span>${extra||''}</span><span class="cap hint">${extra?'':'叩いて録る'}</span></button>`;
+  return `<span class="slot" aria-hidden="true"><span class="hole"></span><span class="cap"></span></span>`;
+}
+function boxHTML(opts){
+  const n=opts.count, filled=opts.filled||[];
+  let slots='';
+  for (let i=0;i<n;i++){
+    if (i<filled.length) slots+=slotHTML('full',filled[i]);
+    else if (i===filled.length) slots+=slotHTML('next',null,opts.nextTag);
+    else slots+=slotHTML('empty');
+  }
+  return `<section class="box" aria-label="今日の小箱">
+    <div class="box-label"><div><div class="t">${T1.name}</div><div class="s">${T1.sub}</div></div><div class="tempo">♩=${T1.bpm}</div></div>
+    <div class="tray ${n>3?'many':''}">${slots}</div>
+    <div class="box-foot">${opts.foot}</div></section>`;
+}
+function mtray(n, filled, mode){ // mode: 'now' = 録音中の穴 / 'new' = いま入った玉
+  let s=''; for(let i=0;i<n;i++){ const c = i<filled ? ('full'+(mode==='new'&&i===filled-1?' new':'')) : (mode==='now'&&i===filled?'now':''); s+=`<i class="${c}"></i>`; }
+  return `<div class="mtray" aria-hidden="true">${s}</div>`;
+}
+
+/* ---------- 画面 ---------- */
+const SCREENS = {};
+
+SCREENS['home'] = () => {
+  const n=S.count;
+  return `<div class="scr">
+  <div class="top"><div class="date">9/30<span>水</span></div><button class="pill" data-act="count" aria-label="1 日の本数を変える">1 日 <b class="num">${n}</b> 本 ⚙</button></div>
+  <div class="shiori">
+    <div class="from">前回のあなたから · 9/29</div>
+    <div class="msg">♩=58 のまま、頭の 2 拍を丁寧に</div>
+    <div class="row"><button class="chip">▶ 声のメモ 4 秒</button><span class="note">♩=58 · 16分 を箱にセットしました</span></div>
+  </div>
+  ${boxHTML({count:n, filled:[14], foot: n===1 ? '1 本入っています。このまま閉じられます' : '空きスロットを叩いて録る'})}
+  <div class="under"><button class="ghostbtn">別のフレーズの箱にする</button><button class="ghostbtn" data-go="extra?one=1">1 本で閉じる</button></div>
+  ${shelf(SHELF,'棚','録った日だけ並びます · 数字は揺れ幅 ms')}
+  <div class="others"><div>ほかのフレーズ<br><span>F→B♭ の押さえ替え · G→C→D→G · クロマチック</span></div><div>›</div></div>
+  <div class="note">揺れ幅は、その日の数本のばらつきの幅です。正しさではなく、手の揃い方の目安です。</div>
+  </div>`;
+};
+
+SCREENS['home-day1'] = () => `<div class="scr">
+  <div class="top"><div class="date">9/30<span>水</span></div><button class="pill" data-act="count">1 日 <b class="num">${S.count}</b> 本 ⚙</button></div>
+  <div class="shiori ghost"><div class="from">しおり</div><div class="msg">今日の終わりに、次のあなたへ 1 枚挟みます。<br>次に開くと、ここに挟まっています。</div></div>
+  ${boxHTML({count:S.count, filled:[], foot:'空きスロットを叩いて録る'})}
+  <div style="text-align:center;padding:4px 8px">
+    <div style="font-size:22px;font-weight:800;line-height:1.45">${S.count} 本で今日の分が閉じます。<br>1 本でも閉じられます。</div>
+    <div class="note" style="margin-top:8px">閉じると、その日の揺れ幅が箱のラベルに書かれて棚に並びます。<br>閉じなかった日は数えません。</div>
+  </div>
+  <section class="shelf" style="margin-top:auto"><h2 class="h2">棚 <small>閉じた箱がここに並びます</small></h2><div style="height:64px;border:1.5px dashed var(--line);border-radius:10px"></div><div class="plank"></div></section>
+  </div>`;
+
+SCREENS['home-gap'] = () => `<div class="scr">
+  <div class="top"><div class="date">9/30<span>水</span></div><button class="pill" data-go="home">いつもの箱へ ›</button></div>
+  <div><div style="font-size:30px;font-weight:800">戻り道</div><div class="note" style="font-size:13.5px;margin-top:2px">3 か所に寄って、いつもの箱に戻ります。どこで抜けても構いません。</div></div>
+  <div class="road">
+    <div class="stop here"><span class="dot">1</span><h3>聴く</h3><p>前回の最後の 1 本(♩=58)</p>
+      <div class="quote">前回のあなたから: ♩=58 のまま、頭の 2 拍を丁寧に</div>
+      <div class="act"><button class="btn">▶ 聴く 8 秒</button><button class="btn line">飛ばす</button></div></div>
+    <div class="stop"><span class="dot">2</span><h3>測る <small style="font-size:12px;color:var(--ink2);font-weight:600">比べない 1 本</small></h3><p>今の手の位置を測るだけ。前回とは並べません。</p>
+      <div class="act"><button class="btn ink" data-go="rec">● ♩=58 で録る</button><button class="btn line">♩=54 から</button></div></div>
+    <div class="stop"><span class="dot">3</span><h3>比べる</h3><p>2 本目から、前の箱の帯と並べます。そこから先はいつもの箱です。</p></div>
+  </div>
+  <div class="note" style="text-align:center">前に空いたときは、2 本目で前の箱の帯に入りました。</div>
+  ${shelf(GAP_SHELF,'棚','そのまま残っています')}
+  </div>`;
+
+SCREENS['rec'] = () => {
+  const k=S.take;
+  return `<div class="scr rec">
+  <div class="rec-top">${mtray(S.count,k-1,'now')}<div><div class="take-no">${k} 本目</div><div class="take-sub">16分のオルタネイト</div><div class="take-sub num">♩=${T1.bpm}</div></div><div class="recdot"><i></i>録音中</div></div>
+  <div class="beatwrap"><div class="beat" id="beat" aria-label="拍">3</div><div class="bdots" id="bdots"><i></i><i></i><i class="on"></i><i></i></div><div class="elapsed num" id="el">0:12</div></div>
+  <button class="stopbtn" data-act="stop" aria-label="止める"><span class="sq"></span><span class="lbl">止める</span>
+    <span class="nx">${k<S.count?`止めると <b>3 秒後に次のカウントイン</b><br>「${S.count} 本続けて録る」がオン`:'止めると箱が閉まります'}</span></button>
+  </div>`;
+};
+
+function abacusSVG(){
+  const k=0.3, sp=40, gap=12, rowH=56, W=354, span=7*sp+gap, x0=(W-span)/2, H=4*rowH-10;
+  let s=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="26 音の玉。25 音は前回の輪の中、7 音目だけ右(遅い側)に外れている">
+  <defs><radialGradient id="beadg" cx=".34" cy=".3" r=".75"><stop offset="0" stop-color="var(--acc-hi)"/><stop offset=".5" stop-color="var(--acc)"/><stop offset="1" stop-color="var(--acc-lo)"/></radialGradient></defs>`;
+  const pos=i=>{ const r=Math.floor(i/8), c=i%8; return [x0+c*sp+(c>=4?gap:0), 32+r*rowH, c]; };
+  let beads='';
+  for (let i=0;i<26;i++){
+    const [cx,cy,c]=pos(i), head=c%4===0;
+    s+=`<line x1="${cx}" y1="${cy-19}" x2="${cx}" y2="${cy+19}" class="skw${head?' head':''}"/>`;
+    if (head) s+=`<text x="${cx}" y="${cy+31}" class="bt">${Math.floor(i/4)+1}拍</text>`;
+    s+=`<circle cx="${cx+PREV[i]*k}" cy="${cy}" r="10.5" class="ringp"/>`;
+    if (i===MISSING) continue;
+    const bx=cx+CUR[i]*k, out=i===6;
+    beads+=`<g class="drop" style="animation-delay:${i*55}ms">${out?`<circle cx="${bx}" cy="${cy}" r="14" class="halo"/>`:''}<circle cx="${bx}" cy="${cy}" r="8.5" class="bead${out?' out':''}"/></g>`;
+    if (out) beads+=`<text x="${bx+1}" y="${cy-17}" class="tag">7</text>`;
+  }
+  const [ex,ey]=pos(16);
+  beads+=`<g class="drop" style="animation-delay:${16.5*55}ms"><circle cx="${ex+20}" cy="${ey+2}" r="5.5" class="xtra"/></g>`;
+  return s+beads+`</svg>`;
+}
+
+SCREENS['diag'] = () => `<div class="scr" style="gap:12px">
+  <div class="dhead">${mtray(S.count,2,'new')}<div class="tt"><b>2 本目</b>${T1.name} · ♩=58 · 前回と</div></div>
+  <div class="after" style="animation-delay:.05s">
+    <div class="bignum" aria-label="ばらつき 13ms、横ばい、前回 14ms"><span class="n num">13</span><span class="u">ms</span><span class="verdict">横ばい</span><span class="pv num">(前回 14)</span></div>
+    <div class="bandnote">差 1ms は ±6ms の帯の中。この幅の差は、日によって普通に出ます。</div>
+  </div>
+  <div class="abacus">${abacusSVG()}<div class="legend"><span><i class="c"></i>今回</span><span><i class="p"></i>前回</span><span>串 = 拍の位置 · 右ほど遅い · 輪だけ = 弾き忘れ · 点線 = 余分</span></div></div>
+  <div class="finding after"><span>7 番目: 前回も今回も後ろ寄り</span><button class="chip">▶ その音</button></div>
+  <div class="metrics after" style="animation-delay:1.7s"><div>一致<b>83→92%</b></div><div>忘れ+余分<b>6→2</b></div><div>テンポ差<b>−0.1%</b></div></div>
+  <div class="nextbar">
+    <button class="gonext" data-act="next"><span>3 本目へ</span><span class="cd">カウントインまで<b class="num" id="cd">3</b></span><i class="prog" id="prog"></i></button>
+    <div class="row3"><button data-act="hold">待って</button><button data-go="extra">ここで閉じる</button><button>くわしく</button></div>
+  </div>
+  </div>`;
+
+/* 3 本目: 玉が円弧を回って輪に閉じ、蓋が閉まる */
+function celSVG(){
+  return `<svg id="celsvg" viewBox="0 0 330 290" role="img" aria-label="3 つの玉が輪に閉じ、蓋が半分閉まっている">
+  <defs>
+   <radialGradient id="cg" cx=".34" cy=".3" r=".75"><stop offset="0" stop-color="var(--acc-hi)"/><stop offset=".5" stop-color="var(--acc)"/><stop offset="1" stop-color="var(--acc-lo)"/></radialGradient>
+   <clipPath id="boxclip"><rect x="15" y="30" width="300" height="245" rx="18"/></clipPath>
+   <pattern id="grain" width="11" height="10" patternUnits="userSpaceOnUse"><rect width="2" height="10" fill="rgba(60,35,10,.07)"/></pattern>
+  </defs>
+  <rect x="15" y="34" width="300" height="245" rx="18" fill="var(--wood-lo)"/>
+  <rect x="15" y="30" width="300" height="245" rx="18" fill="var(--wood)"/>
+  <rect x="15" y="30" width="300" height="245" rx="18" fill="url(#grain)"/>
+  <rect x="33" y="48" width="264" height="209" rx="12" fill="var(--wood-in)"/>
+  <rect x="33" y="48" width="264" height="10" rx="5" fill="rgba(0,0,0,.14)"/>
+  <circle cx="95" cy="190" r="30" fill="var(--slot)"/><circle cx="165" cy="190" r="30" fill="var(--slot)"/><circle cx="235" cy="190" r="30" fill="var(--slot)"/>
+  <g id="trails" fill="none" stroke="var(--acc)" stroke-width="5" stroke-linecap="round" opacity=".32"></g>
+  <circle id="ring" cx="165" cy="180" r="46" fill="none" stroke="var(--acc)" stroke-width="3" pathLength="100" stroke-dasharray="0 100" transform="rotate(-90 165 180)"/>
+  <g id="balls"></g>
+  <g clip-path="url(#boxclip)"><g id="lid">
+    <rect x="15" y="30" width="300" height="245" fill="var(--lid)"/>
+    <rect x="15" y="30" width="300" height="245" fill="url(#grain)"/>
+    <rect x="15" y="269" width="300" height="6" fill="var(--wood-lo)"/>
+    <rect x="15" y="275" width="300" height="10" fill="rgba(0,0,0,.18)"/>
+    <rect x="105" y="222" width="120" height="34" rx="5" fill="var(--label)"/>
+    <text x="165" y="244" text-anchor="middle" font-family="var(--mono)" font-weight="800" font-size="14" fill="var(--label-ink)">9/30 · 今日の揺れ</text>
+  </g></g>
+  </svg>`;
+}
+const CEL = { cx:165, cy:180, r:46, slots:[[95,190],[165,190],[235,190]], th0:[160,90,20], dth:[170,120,70] };
+function celFrame(t){
+  const cl=v=>Math.max(0,Math.min(1,v)), ease=v=>1-Math.pow(1-v,3);
+  const p1=ease(cl(t/0.28)), p2=ease(cl((t-0.22)/0.36)), p3=ease(cl((t-0.55)/0.45));
+  const P=(deg)=>[CEL.cx+CEL.r*Math.cos(deg*Math.PI/180), CEL.cy+CEL.r*Math.sin(deg*Math.PI/180)];
+  let balls='', trails='';
+  for (let i=0;i<3;i++){
+    const a0=CEL.th0[i], a=a0+CEL.dth[i]*p2, [rx,ry]=P(a0), [sx,sy]=CEL.slots[i];
+    let x,y; if (p2<=0){ x=sx+(rx-sx)*p1; y=sy+(ry-sy)*p1; } else { [x,y]=P(a); }
+    if (p2>0.02){ const [ax,ay]=P(a0), large=(a-a0)>180?1:0; trails+=`<path d="M${ax.toFixed(1)} ${ay.toFixed(1)} A${CEL.r} ${CEL.r} 0 ${large} 1 ${x.toFixed(1)} ${y.toFixed(1)}"/>`; }
+    balls+=`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="15" fill="url(#cg)"/>`;
+  }
+  document.getElementById('balls').innerHTML=balls;
+  document.getElementById('trails').innerHTML=trails;
+  const ringP=Math.pow(cl((t-0.4)/0.2),1)*100;
+  document.getElementById('ring').setAttribute('stroke-dasharray',`${ringP} 100`);
+  document.getElementById('trails').setAttribute('opacity', (0.32*(1-cl((t-0.58)/0.1))).toFixed(2));
+  document.getElementById('lid').setAttribute('transform',`translate(0 ${(-245*(1-p3)).toFixed(1)})`);
+}
+SCREENS['celebrate'] = () => `<div class="scr cel">
+  <div class="ttl">3 本目</div>
+  <div class="sub">${T1.name} · ♩=58</div>
+  ${celSVG()}
+  <div class="trio"><span class="num">14<small>ms</small></span><span class="num">13<small>ms</small></span><span class="num">16<small>ms</small></span></div>
+  <div class="lidtext">蓋が閉まると、今日の揺れがラベルに書かれます</div>
+  <div class="note">3 本のいちばん小さい〜大きいが、今日の手の揺れ幅です</div>
+  <button class="chip" data-act="replay" style="margin-top:18px">↺ もう一度見る</button>
+  </div>`;
+
+function bandCmp(one){ // 10〜22ms
+  const W=320, x=v=>20+(v-10)/12*(W-52);
+  let s=`<svg viewBox="0 0 ${W} 86" aria-hidden="true">`;
+  [10,12,14,16,18,20,22].forEach(v=>{ s+=`<line x1="${x(v)}" y1="8" x2="${x(v)}" y2="62" stroke="#E6DBC8" stroke-width="1"/><text x="${x(v)}" y="78" text-anchor="middle" font-family="var(--mono)" font-size="10" fill="#8A7D70">${v}</text>`; });
+  s+=`<text x="${x(22)+8}" y="78" font-size="9" fill="#8A7D70">ms</text>`;
+  s+=`<text x="20" y="20" font-size="10.5" fill="#76695E">前の箱 9/29</text><rect x="${x(14)}" y="24" width="${x(18)-x(14)}" height="11" rx="5.5" fill="#B5A898"/>`;
+  if (one){
+    s+=`<text x="20" y="50" font-size="10.5" fill="#76695E">今日(1 本)</text><circle cx="${x(14)}" cy="56" r="6.5" fill="var(--label-acc)"/><line x1="${x(14)}" y1="24" x2="${x(14)}" y2="50" stroke="var(--label-acc)" stroke-width="1.5" stroke-dasharray="2 2"/>`;
+  } else {
+    s+=`<rect x="${x(14)}" y="21" width="${x(16)-x(14)}" height="40" fill="var(--label-acc)" opacity=".13"/>`;
+    s+=`<text x="20" y="50" font-size="10.5" fill="#76695E">今日</text><rect x="${x(13)}" y="51" width="${x(16)-x(13)}" height="11" rx="5.5" fill="var(--label-acc)"/>`;
+    [13,14,16].forEach(v=>{ s+=`<circle cx="${x(v)}" cy="56.5" r="2.3" fill="#FFF8EC"/>`; });
+  }
+  return s+`</svg>`;
+}
+SCREENS['extra'] = (hq) => {
+  const one = hq.get('one')==='1' || Q.get('one')==='1';
+  const label = one ? `
+      <div class="meta"><span>9/30 水 · ${T1.name}</span><span class="num">♩=58</span></div>
+      <div class="k">今日</div>
+      <div class="v" aria-label="今日 14ms、1 本">14<small>ms</small><small style="font-size:18px;font-family:var(--sans)">(1 本)</small></div>
+      <div class="three">1 本の日は、幅ではなく点で残ります</div>
+      <div class="bandcmp">${bandCmp(true)}<div class="overlap"><b>前の箱の帯の中</b><span>1 本なので、横ばいかどうかは言いません</span></div></div>`
+    : `
+      <div class="meta"><span>9/30 水 · ${T1.name}</span><span class="num">♩=58</span></div>
+      <div class="k">今日の揺れ</div>
+      <div class="v" aria-label="今日の揺れ 13 から 16ms">13〜16<small>ms</small></div>
+      <div class="three">3 本: 14 · 13 · 16</div>
+      <div class="bandcmp">${bandCmp(false)}<div class="overlap"><b>重なっている</b><span>帯が重なっているあいだは横ばいです</span></div></div>`;
+  return `<div class="scr" style="gap:12px">
+  <div class="top"><div class="date">${one?'1 本で閉じました':'閉じました'}</div><button class="pill" data-go="home">棚へ ›</button></div>
+  <div class="closed pending"><div class="biglabel">${label}</div></div>
+  ${one?`<div class="note" style="margin-top:6px">和音は鳴りかけのまま。次に開いたとき、続きから鳴ります。</div>`:'<div style="height:6px"></div>'}
+  <h2 class="h2" style="font-size:17px">次のあなたへ、しおりを挟む</h2>
+  <div class="opts" role="radiogroup">
+    <button class="opt sel" role="radio" aria-checked="true" data-act="opt"><i></i>♩=58 をもう一度<span>頭の 2 拍</span></button>
+    <button class="opt" role="radio" aria-checked="false" data-act="opt"><i></i>♩=60 にしてみる<span>1 目盛り</span></button>
+    <button class="opt" role="radio" aria-checked="false" data-act="opt"><i></i>今日と同じ<span>そのまま</span></button>
+  </div>
+  <div class="memo"><button class="chip">● 声のメモ(5 秒まで)</button><button class="chip">✎ ひとこと書く</button></div>
+  <button class="btn" data-go="home" style="margin-top:auto;padding:16px;font-size:18px">しおりを挟んで棚へ</button>
+  <div class="note" style="text-align:center">挟まなくても、次に開くと「今日と同じ」が挟まっています。</div>
+  </div>`;
+};
+
+function monthSVG(){
+  const W=354, H=250, L=30, R=8, top=14, bot=176, n=MONTH.length, cw=(W-L-R)/n;
+  const y=v=>bot-(v-10)/18*(bot-top), cx=i=>L+cw*i+cw/2;
+  let s=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="9 月の 18 箱の揺れ幅の帯。最初の週 19〜26ms(♩=52)、最後の週 13〜18ms(♩=58)。後半は帯どうしが重なって続く">`;
+  s+=`<rect x="${L+cw*0}" y="${top-6}" width="${cw*4}" height="${bot-top+12}" rx="8" fill="var(--acc-tint)" opacity=".7"/>`;
+  s+=`<rect x="${L+cw*13}" y="${top-6}" width="${cw*5}" height="${bot-top+12}" rx="8" fill="var(--acc-tint)" opacity=".7"/>`;
+  [10,15,20,25].forEach(v=>{ s+=`<line x1="${L}" y1="${y(v)}" x2="${W-R}" y2="${y(v)}" stroke="var(--line)" stroke-width="1"/><text x="${L-6}" y="${y(v)+3.5}" text-anchor="end" font-family="var(--mono)" font-size="10" fill="var(--ink2)">${v}</text>`; });
+  s+=`<text x="${L-6}" y="${top-2}" text-anchor="end" font-size="9" fill="var(--ink2)">ms</text>`;
+  MONTH.forEach((m,i)=>{
+    const [d,bpm,lo,hi]=m, last=i===n-1, col=last?'var(--acc)':'var(--prev)';
+    if (lo===hi) s+=`<circle cx="${cx(i)}" cy="${y(lo)}" r="4.5" fill="${col}"/>`;
+    else s+=`<rect x="${cx(i)-5}" y="${y(hi)}" width="10" height="${y(lo)-y(hi)}" rx="5" fill="${col}"/>`;
+    // 棚の箱
+    s+=`<rect x="${cx(i)-7.5}" y="${bot+10}" width="15" height="12" rx="2.5" fill="var(--wood)"/><rect x="${cx(i)-5}" y="${bot+13}" width="10" height="5" rx="1" fill="var(--label)"/>`;
+  });
+  s+=`<rect x="${L-2}" y="${bot+22}" width="${W-L-R+4}" height="5" rx="2" fill="var(--wood-lo)"/>`;
+  // テンポの区切り(帯の比較は同じテンポの中で)
+  const seg=[[0,4,'♩=52'],[4,10,'♩=55'],[10,18,'♩=58']];
+  seg.forEach(([a,b,t])=>{ const x1=L+cw*a+2, x2=L+cw*b-2; s+=`<line x1="${x1}" y1="${bot+38}" x2="${x2}" y2="${bot+38}" stroke="var(--ink2)" stroke-width="1.2"/><line x1="${x1}" y1="${bot+34}" x2="${x1}" y2="${bot+42}" stroke="var(--ink2)"/><line x1="${x2}" y1="${bot+34}" x2="${x2}" y2="${bot+42}" stroke="var(--ink2)"/><text x="${(x1+x2)/2}" y="${bot+54}" text-anchor="middle" font-family="var(--mono)" font-weight="700" font-size="11" fill="var(--ink)">${t}</text>`; });
+  s+=`<text x="${L+cw*2}" y="${bot+68}" text-anchor="middle" font-size="10" fill="var(--ink2)">最初の週</text><text x="${L+cw*15.5}" y="${bot+68}" text-anchor="middle" font-size="10" fill="var(--ink2)">最後の週</text>`;
+  s+=`<text x="${cx(0)}" y="${bot+6}" text-anchor="middle" font-size="0">.</text>`;
+  return s+`</svg>`;
+}
+SCREENS['extra2'] = () => `<div class="scr month" style="gap:12px">
+  <div class="top"><div class="date">9 月の棚<span>${T1.name}</span></div><button class="pill" data-go="home">›</button></div>
+  <div class="note" style="font-size:13px;margin-top:-6px">閉じた日の箱だけが並んでいます。空いた日は詰めてあります。</div>
+  <div class="mcard">${monthSVG()}</div>
+  <div class="note">帯 = その日の数本の揺れ幅。帯が重なって続いているところは横ばいです。テンポが違う箱どうしは、帯を並べて比べません。</div>
+  <h2 class="h2" style="font-size:16px">最初の週と最後の週を開けて聴く</h2>
+  <div class="cmp">
+    <button><b>▶ 最初の週</b><span class="num">9/3 · ♩=52</span><br>揺れ <span class="num">20–25ms</span></button>
+    <button><b>▶ 最後の週</b><span class="num">9/29 · ♩=58</span><br>揺れ <span class="num">14–18ms</span></button>
+  </div>
+  <button class="btn ink" style="padding:15px;font-size:17px">▶▶ 続けて聴き比べる(各 8 秒)</button>
+  <div class="note" style="text-align:center">聴こえ方の違いを確かめるためのものです。良し悪しは決めません。</div>
+  <div class="others" style="margin-top:auto"><div>しおりの束をめくる<br><span>9 月に自分で挟んだ言葉</span></div><div>›</div></div>
+  </div>`;
+
+/* ---------- ルーティング ---------- */
+const ROUTES=[['home','ホーム'],['home-day1','初日'],['home-gap','空白明け'],['rec','録音中'],['diag','1本ごと'],['celebrate','3本目'],['extra','閉じた箱'],['extra?one=1','1本で閉じた'],['extra2','1か月後']];
+function parse(){ const h=(location.hash.slice(1)||'home'); const [name,qs]=h.split('?'); return { h, name: SCREENS[name]?name:'home', hq:new URLSearchParams(qs||'') }; }
+function navHTML(cur){
+  return ROUTES.map(([h,l])=>`<a href="#${h}" class="${h===cur?'on':''}">${l}</a>`).join('')+
+    `<button id="snd">${sound?'♪ 音あり':'♪ 音なし'}</button><button id="thm">${theme==='dark'?'☀ ライト':'◐ ダーク'}</button>`;
+}
+function go(h){ location.hash=h; }
+function render(){
+  clearTimers();
+  const r=parse();
+  if (r.name==='rec' && !S.flow) S.take=2;
+  document.getElementById('chrome').innerHTML=navHTML(r.h);
+  document.getElementById('app').innerHTML=SCREENS[r.name](r.hq);
+  window.scrollTo(0,0);
+  AFTER[r.name] && AFTER[r.name]();
+  S.flow=false;
+}
+const AFTER = {
+  rec(){
+    if (!ANIM) return;
+    let b=2, sec=12; const beat=document.getElementById('beat'), dots=[...document.querySelectorAll('#bdots i')], el=document.getElementById('el');
+    timers.push(setInterval(()=>{ b=(b+1)%4; beat.textContent=b+1; dots.forEach((d,i)=>d.classList.toggle('on',i===b)); },60000/T1.bpm));
+    timers.push(setInterval(()=>{ sec++; el.textContent=`0:${String(sec).padStart(2,'0')}`; },1000));
+  },
+  diag(){
+    const flow=S.flowNow;
+    S.flowNow=false;
+    if (!ANIM) return;
+    for (let i=0;i<26;i++) if (i!==MISSING) timers.push(setTimeout(()=>knock(.12),i*55+250));
+    timers.push(setTimeout(()=>{ chord('V'); buzz(8); },26*55+350));
+    if (flow){ // 止めて 3 秒後に次のカウントイン
+      const start=26*55+700, prog=document.getElementById('prog'), cd=document.getElementById('cd');
+      timers.push(setTimeout(()=>{
+        prog.style.transition='width 3s linear'; prog.style.width='100%';
+        let c=3; timers.push(setInterval(()=>{ c--; cd.textContent=c; if(c<=0){ clearTimers(); S.take=3; S.flow=true; go('rec'); } },1000));
+      },start));
+    }
+  },
+  celebrate(){
+    const flow=S.flowNow; S.flowNow=false;
+    if (!ANIM){ celFrame(0.63); return; }
+    const end = flow ? 1 : 0.63, dur=1700*end, t0=performance.now();
+    let chorded=false;
+    const step=now=>{ const t=Math.min(end,(now-t0)/1700); celFrame(t);
+      if (!chorded && t>0.22){ chorded=true; chord('I'); buzz([20,70,20,70,90]); }
+      if (t<end) timers.push(requestAnimationFrame(step));
+      else if (flow) timers.push(setTimeout(()=>go('extra'),700));
+    };
+    celFrame(0); timers.push(requestAnimationFrame(step));
+  },
+};
+document.addEventListener('click',e=>{
+  const t=e.target.closest('[data-go],[data-act],#snd,#thm'); if(!t) return;
+  if (t.id==='snd'){ sound=!sound; t.textContent=sound?'♪ 音あり':'♪ 音なし'; return; }
+  if (t.id==='thm'){ theme=theme==='dark'?'light':'dark'; document.documentElement.dataset.theme=theme; t.textContent=theme==='dark'?'☀ ライト':'◐ ダーク'; return; }
+  if (t.dataset.go){ knock(.15); buzz(6); if(t.dataset.go==='rec'){ S.take = parse().name==='home' ? 2 : (parse().name==='home-day1'||parse().name==='home-gap' ? 1 : S.take); S.flow=true; } go(t.dataset.go); return; }
+  const a=t.dataset.act;
+  if (a==='ball'){ const b=t.querySelector('.ball'); b.classList.remove('bounce'); void b.offsetWidth; b.classList.add('bounce'); knock(.25); buzz(5); }
+  if (a==='count'){ S.count = S.count%5+1; render(); }
+  if (a==='stop'){ buzz(15); S.flowNow=true; if (S.take>=S.count){ go('celebrate'); } else { go('diag'); } }
+  if (a==='next'){ clearTimers(); S.take=3; S.flow=true; go('rec'); }
+  if (a==='hold'){ clearTimers(); const p=document.getElementById('prog'); if(p){p.style.transition='none';p.style.width='0';} const cd=document.getElementById('cd'); if(cd) cd.parentNode.innerHTML='叩くと始まります'; }
+  if (a==='replay'){ S.flowNow=false; clearTimers(); AFTER.celebrate(); }
+  if (a==='opt'){ document.querySelectorAll('.opt').forEach(o=>{ o.classList.toggle('sel',o===t); o.setAttribute('aria-checked',o===t); }); knock(.18); }
+});
+window.addEventListener('hashchange',render);
+render();
+</script>
+</body>
+</html>

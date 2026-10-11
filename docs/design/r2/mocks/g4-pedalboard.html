@@ -1,0 +1,741 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>G4 足元のペダルボード — モック</title>
+<style>
+:root{
+  --board:#26262B; --board2:#303037; --slat:#1E1E22; --ink:#F4F4F6; --ink2:#B9B9C2; --ink3:#8E8E98;
+  --card:#34343C; --line:rgba(255,255,255,.12); --recess:#1A1A1E; --recessEdge:rgba(255,255,255,.22);
+  --dist:#FF8A1F; --dist-hi:#FFB05E; --dist-lo:#C2600A;
+  --cho:#2E7BFF; --cho-hi:#6FA3FF; --cho-lo:#1B55C0;
+  --od:#FFD400; --od-hi:#FFE866; --od-lo:#C9A500;
+  --dly:#3FD6A6; --dly-hi:#86E9C8; --dly-lo:#23A07A;
+  --amber:#F2B233; --amber-soft:rgba(242,178,51,.28);
+  --led-off:#4A1C1C; --led-on:#FF3B30;
+  --metal1:#F2F2F4; --metal2:#9A9AA2; --metal3:#5C5C64;
+  --wood:#8A5A34; --wood2:#6E4526;
+  --num: "SF Pro Rounded","Hiragino Maru Gothic ProN","Hiragino Sans",ui-rounded,system-ui,sans-serif;
+  --jp: "Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP",system-ui,sans-serif;
+  --logo: "Arial Black","Helvetica Neue",Arial,sans-serif;
+}
+:root.light{
+  --board:#F2F2F0; --board2:#E6E6E2; --slat:#D9D9D4; --ink:#1C1C21; --ink2:#4E4E57; --ink3:#72727C;
+  --card:#FFFFFF; --line:rgba(0,0,0,.10); --recess:#DCDCD6; --recessEdge:rgba(0,0,0,.18);
+  --led-off:#7A3A3A; --amber:#D8930F; --amber-soft:rgba(216,147,15,.25);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:#0d0d10}
+:root.light body{background:#cfcfca}
+body{font-family:var(--jp);color:var(--ink);-webkit-font-smoothing:antialiased;font-feature-settings:"palt"}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+.app{width:390px;min-height:844px;margin:0 auto;position:relative;overflow:hidden;
+  background-color:var(--board);
+  background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.022) 0 2px,transparent 2px 5px),
+                   repeating-linear-gradient(-45deg,rgba(0,0,0,.05) 0 2px,transparent 2px 5px)}
+:root.light .app{background-image:repeating-linear-gradient(45deg,rgba(0,0,0,.025) 0 2px,transparent 2px 5px)}
+.tnum{font-family:var(--num);font-variant-numeric:tabular-nums;font-weight:800}
+
+/* ---------- nav ---------- */
+#nav{position:sticky;top:0;z-index:50;width:390px;margin:0 auto;background:rgba(10,10,12,.92);
+  display:flex;flex-wrap:wrap;gap:2px 4px;padding:4px 6px;font-size:10.5px;line-height:1.3}
+#nav a{color:#ddd;text-decoration:none;padding:2px 5px;border-radius:4px}
+#nav a.on{background:#FF8A1F;color:#111}
+#nav .sp{flex:1}
+#nav button{color:#ddd;border:1px solid #555;border-radius:4px;padding:1px 5px;font-size:10.5px}
+.shot #nav{display:none}
+.shot .app{margin:0}
+.shot body,.shot html{background:var(--board)}
+
+.screen{display:none;min-height:844px;padding:0 16px;position:relative}
+.screen.on{display:block}
+
+/* ---------- common ---------- */
+.topline{display:flex;align-items:baseline;justify-content:space-between;padding-top:18px}
+.topline h1{font-size:22px;font-weight:900;letter-spacing:.02em}
+.topline .date{font-size:14px;font-weight:700;color:var(--ink2)}
+.note{font-size:12px;line-height:1.55;color:var(--ink3);font-weight:600}
+.hint{margin-top:14px;text-align:center;font-size:19px;font-weight:900}
+.hint .ar{color:var(--led-on)}
+
+/* ---------- chain ---------- */
+.chain{margin-top:12px;background:var(--board2);border-radius:14px;padding:10px 12px 10px;border:1px solid var(--line)}
+.chain .lbl{display:flex;justify-content:space-between;font-size:12px;font-weight:800;color:var(--ink2)}
+.chain svg{display:block;margin-top:4px}
+.past{display:flex;gap:8px;margin-top:6px;overflow:hidden;white-space:nowrap}
+.past .ph{flex:none;display:flex;align-items:center;gap:5px;background:rgba(0,0,0,.18);border-radius:8px;padding:3px 7px 3px 6px;font-size:11px;font-weight:800;color:var(--ink2)}
+:root.light .past .ph{background:rgba(0,0,0,.06)}
+.past .ph i{display:inline-block;width:9px;height:11px;border-radius:2.5px}
+.past .ph b{display:inline-block;width:5px;height:2px;background:var(--ink3);margin:0 -3px}
+
+/* ---------- board / pedal ---------- */
+.board{margin-top:12px;position:relative;border-radius:18px;padding:12px;
+  background:var(--slat);box-shadow:inset 0 2px 0 rgba(255,255,255,.04)}
+.board::before,.board::after{content:"";position:absolute;left:0;right:0;height:10px;background:rgba(0,0,0,.18)}
+.board::before{top:33%}.board::after{top:70%}
+:root.light .board::before,:root.light .board::after{background:rgba(0,0,0,.05)}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;position:relative;z-index:1}
+
+.pedal{--c:var(--dist);--hi:var(--dist-hi);--lo:var(--dist-lo);--txt:#1b1b1f;
+  position:relative;height:246px;border-radius:16px;color:var(--txt);text-align:left;width:100%;
+  background:linear-gradient(to bottom,var(--hi) 0,var(--hi) 60px,var(--c) 60px);
+  box-shadow:0 6px 0 var(--lo),0 12px 18px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.5);
+  transition:transform 90ms ease-out,box-shadow 90ms ease-out;padding:12px 12px 0;display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-start;user-select:none;-webkit-tap-highlight-color:transparent}
+:root.light .pedal{box-shadow:0 6px 0 var(--lo),0 10px 14px rgba(0,0,0,.18),inset 0 1px 0 rgba(255,255,255,.5)}
+.pedal.down{transform:translateY(3px);box-shadow:0 3px 0 var(--lo),0 6px 10px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.5)}
+.pedal.cho{--c:var(--cho);--hi:var(--cho-hi);--lo:var(--cho-lo);--txt:#fff}
+.pedal.od{--c:var(--od);--hi:var(--od-hi);--lo:var(--od-lo)}
+.pedal.dly{--c:var(--dly);--hi:var(--dly-hi);--lo:var(--dly-lo)}
+/* 形: 和音は上面が斜めに落ちた形(上の角が大きい) */
+.pedal.k-chord{border-radius:30px 30px 16px 16px;background:linear-gradient(to bottom,var(--hi) 0,var(--hi) 70px,var(--c) 70px)}
+.pedal.k-song{border-radius:16px 16px 22px 22px}
+.pedal .row1{display:flex;align-items:center;gap:8px;height:34px}
+.led{width:13px;height:13px;border-radius:50%;background:var(--led-off);box-shadow:inset 0 1px 2px rgba(0,0,0,.6),0 0 0 2px rgba(0,0,0,.25);transition:background 120ms,box-shadow 120ms;flex:none}
+.led.on{background:var(--led-on);box-shadow:0 0 0 2px rgba(0,0,0,.25),0 0 10px 3px rgba(255,59,48,.75),0 0 22px 6px rgba(255,59,48,.35)}
+.mk{width:28px;height:28px;border-radius:50%;background:radial-gradient(circle at 40% 35%,#4a4a52,#141417 70%);box-shadow:0 2px 0 rgba(0,0,0,.35);position:relative;flex:none}
+.mk::after{content:"";position:absolute;left:50%;top:3px;width:2.5px;height:10px;margin-left:-1.25px;background:#fff;border-radius:2px;transform-origin:50% 11px;transform:rotate(var(--a,0deg))}
+.pedal .model{font-family:var(--logo);font-style:italic;font-weight:900;font-size:23px;letter-spacing:-.01em;margin-top:20px;line-height:1}
+.pedal.k-chord .model{margin-top:28px}
+.pedal .nm{font-size:12.5px;font-weight:800;line-height:1.35;margin-top:6px;min-height:34px}
+.pedal .ib{display:inline-block;margin-top:4px;font-size:11px;font-weight:800;background:rgba(0,0,0,.16);padding:2px 7px;border-radius:6px}
+.pedal.cho .ib{background:rgba(0,0,0,.22)}
+.fs{position:absolute;left:50%;bottom:16px;width:58px;height:58px;margin-left:-29px;border-radius:50%;
+  background:radial-gradient(circle at 38% 32%,var(--metal1),var(--metal2) 55%,var(--metal3));
+  box-shadow:0 0 0 5px rgba(0,0,0,.22),0 3px 0 5px rgba(0,0,0,.18),inset 0 -3px 5px rgba(0,0,0,.35)}
+.fs::after{content:"";position:absolute;inset:14px;border-radius:50%;background:radial-gradient(circle at 40% 35%,#fff,#b6b6be 60%,#80808a);box-shadow:inset 0 0 0 1px rgba(0,0,0,.2)}
+.pedal .kind{position:absolute;right:12px;top:18px;font-size:10px;font-weight:900;opacity:.75}
+.addslot{height:246px;border-radius:16px;border:2px dashed var(--line);display:flex;align-items:center;justify-content:center;font-size:13px;color:var(--ink3);font-weight:800}
+
+/* ---------- rec ---------- */
+#rec{padding:0}
+.rectop{height:464px;padding:18px 18px 0;text-align:center;position:relative}
+.recbar{display:flex;justify-content:center;align-items:center;gap:12px;font-size:32px;font-weight:900}
+.recdot{width:22px;height:22px;border-radius:50%;background:var(--led-on);box-shadow:0 0 14px rgba(255,59,48,.7)}
+.recname{font-size:18px;font-weight:800;color:var(--ink2);margin-top:4px}
+.beat{font-size:160px;line-height:1;margin-top:18px;letter-spacing:-.02em}
+.beatdots{display:flex;justify-content:center;gap:22px;margin-top:10px}
+.beatdots i{width:24px;height:24px;border-radius:50%;border:3px solid var(--ink3)}
+.beatdots i.on{background:var(--ink);border-color:var(--ink)}
+.elapsed{font-size:44px;margin-top:14px;color:var(--ink)}
+.level{margin:14px auto 0;width:220px;height:8px;border-radius:4px;background:rgba(255,255,255,.1);overflow:hidden}
+:root.light .level{background:rgba(0,0,0,.1)}
+.level i{display:block;height:100%;width:46%;background:var(--dly);border-radius:4px;transition:width 90ms}
+.recquiet{font-size:12px;color:var(--ink3);font-weight:700;margin-top:8px}
+.stomp{height:380px;position:relative;border-radius:30px 30px 0 0;width:100%;display:block;
+  background:linear-gradient(to bottom,var(--dist-hi) 0,var(--dist-hi) 26px,var(--dist) 26px);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.6);color:#1b1b1f;-webkit-tap-highlight-color:transparent}
+.bigfs{position:absolute;left:50%;top:34px;width:234px;height:234px;margin-left:-117px;border-radius:50%;
+  background:radial-gradient(circle at 38% 30%,#fff,#c4c4cc 45%,#7c7c86 80%,#55555e);
+  box-shadow:0 0 0 12px rgba(0,0,0,.2),0 8px 0 12px rgba(0,0,0,.18),inset 0 -8px 14px rgba(0,0,0,.35);transition:transform 90ms}
+.bigfs::after{content:"";position:absolute;inset:56px;border-radius:50%;background:radial-gradient(circle at 40% 32%,#fff,#bdbdc5 60%,#8a8a94);box-shadow:inset 0 0 0 2px rgba(0,0,0,.18),0 2px 3px rgba(0,0,0,.3)}
+.stomp.down .bigfs{transform:translateY(3px)}
+.stomplbl{position:absolute;left:0;right:0;top:292px;text-align:center;font-size:30px;font-weight:900}
+.btnote{position:absolute;left:0;right:0;bottom:14px;text-align:center;font-size:12.5px;font-weight:800;opacity:.8}
+
+/* ---------- tray (カチッ) ---------- */
+.dhead{margin:0 -16px;padding:10px 16px 10px;background:linear-gradient(to bottom,var(--dist-hi),var(--dist));color:#1b1b1f;border-radius:0 0 22px 22px;box-shadow:0 5px 0 var(--dist-lo)}
+.dhead .t{font-size:13px;font-weight:800;opacity:.8}
+.dhead .h{font-size:21px;font-weight:900;margin-top:2px;display:flex;justify-content:space-between;align-items:baseline}
+.dhead .h span{font-family:var(--num);font-weight:800;font-size:18px}
+.tray{position:relative;margin-top:14px;background:var(--board2);border-radius:16px;padding:14px 10px 10px;border:1px solid var(--line)}
+.tray .cap{font-size:13px;font-weight:800;color:var(--ink2);display:flex;justify-content:space-between}
+.rows{position:relative;margin-top:8px}
+.trow{position:relative;height:40px;margin-bottom:17px}
+.trow:first-child{margin-top:12px}
+.trow:last-child{margin-bottom:4px}
+.beatno{position:absolute;left:0;top:-13px;font-size:9.5px;font-weight:800;color:var(--ink3)}
+.slot{position:absolute;top:0;width:34px;height:38px;border-radius:9px;background:var(--recess);
+  box-shadow:inset 0 3px 5px rgba(0,0,0,.55),inset 0 -1px 0 var(--recessEdge)}
+:root.light .slot{box-shadow:inset 0 3px 5px rgba(0,0,0,.22),inset 0 -1px 0 rgba(255,255,255,.8)}
+.slot.flash{box-shadow:inset 0 3px 5px rgba(0,0,0,.55),0 0 0 2px var(--dist-hi)}
+.nt{position:absolute;top:3px;width:28px;height:32px;border-radius:7px;background:linear-gradient(to bottom,var(--dist-hi) 0 9px,var(--dist) 9px);
+  box-shadow:0 2px 0 var(--dist-lo);opacity:0;transform:translateY(-140px)}
+.nt.in{opacity:1;transform:none;animation:land 260ms cubic-bezier(.55,0,1,.45) both}
+.nt.air{opacity:1;transform:translateY(-46px)}
+.nt.set{opacity:1;transform:none}
+.nt.out{background:linear-gradient(to bottom,#FFD9A8 0 9px,#F0B46A 9px);box-shadow:0 2px 0 #B37A33}
+.nt.out.set,.nt.out.in{transform:translate(0,18px) rotate(14deg)}
+.nt.out.in{animation:landout 320ms cubic-bezier(.55,0,1,.45) both}
+@keyframes land{0%{opacity:1;transform:translateY(-140px)}70%{transform:translateY(0)}84%{transform:translateY(-4px)}100%{transform:none}}
+@keyframes landout{0%{opacity:1;transform:translate(0,-140px) rotate(0)}70%{transform:translate(0,18px) rotate(10deg)}85%{transform:translate(1px,14px) rotate(16deg)}100%{transform:translate(0,18px) rotate(14deg)}}
+.koton{position:absolute;font-size:12px;font-weight:900;color:var(--ink);white-space:nowrap;background:var(--card);border:1px solid var(--line);padding:2px 7px;border-radius:8px;z-index:3}
+.koton small{font-weight:800;color:var(--ink2);font-size:11px}
+.rail{position:absolute;left:0;right:0;top:41px;height:2px;background:var(--line)}
+.skip{position:absolute;right:12px;top:12px;font-size:11px;font-weight:800;color:var(--ink3)}
+
+/* ---------- numbers & knobs ---------- */
+.nums{margin-top:12px;background:var(--card);border-radius:14px;padding:10px 14px;border:1px solid var(--line)}
+.nrow{display:flex;align-items:baseline;gap:8px;padding:5px 0}
+.nrow+.nrow{border-top:1px solid var(--line)}
+.nrow .k{width:88px;font-size:13px;font-weight:800;color:var(--ink2)}
+.nrow .v{font-size:25px}
+.nrow .v .p{color:var(--ink3);font-weight:700}
+.nrow .v .u{font-size:13px;font-weight:800;color:var(--ink2);margin-left:2px}
+.nrow .v .to{font-size:15px;color:var(--ink3);margin:0 4px}
+.nrow .tag{white-space:nowrap;margin-left:auto;font-size:12.5px;font-weight:900;color:var(--ink);background:rgba(127,127,127,.18);padding:2px 8px;border-radius:7px}
+.nrow .sub{font-size:11px;color:var(--ink3);font-weight:700}
+.knobs{display:flex;justify-content:space-between;margin-top:8px}
+.knob{width:114px;text-align:center}
+.knob svg{display:block;margin:0 auto}
+.knob .kl{font-size:12px;font-weight:800;color:var(--ink2);margin-top:-4px}
+.knob .kv{font-size:20px;margin-top:1px}
+.knob .kp{font-size:11px;font-weight:800;color:var(--ink3)}
+.legend{font-size:11px;font-weight:700;color:var(--ink3);margin-top:6px;line-height:1.5;text-align:center}
+.legend i{display:inline-block;vertical-align:middle;margin:0 3px 0 6px}
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px}
+.pbtn{height:62px;border-radius:16px;background:var(--card);border:2px solid var(--line);font-size:18px;font-weight:900;
+  box-shadow:0 4px 0 rgba(0,0,0,.35);transition:transform 90ms,box-shadow 90ms}
+:root.light .pbtn{box-shadow:0 4px 0 rgba(0,0,0,.12)}
+.pbtn:active,.pbtn.down{transform:translateY(3px);box-shadow:0 1px 0 rgba(0,0,0,.35)}
+.pbtn small{display:block;font-size:11px;font-weight:700;color:var(--ink3)}
+.back{display:block;margin:12px auto 0;font-size:13px;font-weight:800;color:var(--ink2);text-decoration:underline;text-underline-offset:3px}
+
+/* ---------- 居場所 ---------- */
+.card{background:var(--card);border-radius:18px;padding:16px;border:1px solid var(--line);margin-top:14px}
+.dots3{display:flex;gap:10px;align-items:center;margin-top:8px}
+.dots3 i{width:26px;height:26px;border-radius:50%;border:3px solid var(--amber)}
+.dots3 i.f{background:var(--amber)}
+.dots3 i.pop{animation:pop 420ms cubic-bezier(.3,1.6,.5,1) both}
+@keyframes pop{0%{transform:scale(.2);background:transparent}100%{transform:scale(1)}}
+.bigmsg{font-size:25px;font-weight:900;line-height:1.35;margin-top:12px}
+.scale{position:relative;height:96px;margin-top:10px}
+.scale .plate{position:absolute;left:0;right:0;top:30px;height:34px;border-radius:8px;background:rgba(127,127,127,.12)}
+.scale .tick{position:absolute;top:24px;width:2px;height:46px;background:var(--ink3);margin-left:-1px}
+.scale .tl{position:absolute;top:74px;font-size:13px;font-weight:800;color:var(--ink2);transform:translateX(-50%)}
+.scale .tl.m{color:var(--ink);font-size:15px}
+.scale .band{position:absolute;top:30px;height:34px;background:var(--amber);border-radius:8px;box-shadow:0 0 0 2px rgba(0,0,0,.08)}
+.scale .band.grow{animation:grow 600ms ease-out both}
+@keyframes grow{from{clip-path:inset(0 100% 0 0);filter:blur(3px)}to{clip-path:inset(0 0 0 0);filter:none}}
+.scale .visit{position:absolute;top:38px;width:18px;height:18px;margin-left:-9px;border-radius:50%;border:3px solid var(--amber);background:var(--card)}
+.scale .qn{position:absolute;left:0;top:0;font-size:12px;font-weight:800;color:var(--ink3)}
+.metro{display:flex;align-items:center;gap:14px;margin-top:6px}
+.pend{transform-origin:30px 64px}
+.pend.swing{animation:swing 1100ms ease-in-out both}
+@keyframes swing{0%{transform:rotate(0)}25%{transform:rotate(-22deg)}75%{transform:rotate(18deg)}100%{transform:rotate(0)}}
+.hist{margin-top:10px}
+.hist div{display:flex;gap:10px;font-size:13px;font-weight:700;color:var(--ink2);padding:4px 0;border-top:1px solid var(--line)}
+.hist b{font-family:var(--num);width:48px;color:var(--ink3)}
+.shelf{margin-top:14px;position:relative;padding:14px 12px 0}
+.shelf .items{display:flex;gap:12px;align-items:flex-end;justify-content:flex-start;position:relative;z-index:1}
+.shelf .plank{height:18px;border-radius:4px;background:linear-gradient(to bottom,#A87248,var(--wood) 40%,var(--wood2));box-shadow:0 6px 10px rgba(0,0,0,.4);margin-top:-2px}
+.mini{width:96px;height:124px;border-radius:12px;padding:8px;position:relative;color:#1b1b1f;
+  background:linear-gradient(to bottom,var(--hi) 0,var(--hi) 34px,var(--c) 34px);box-shadow:0 4px 0 var(--lo)}
+.mini .model{font-family:var(--logo);font-style:italic;font-size:14px;margin-top:14px;line-height:1}
+.mini .nm{font-size:10.5px;font-weight:800;line-height:1.3;margin-top:4px}
+.mini .fs{width:30px;height:30px;margin-left:-15px;bottom:8px;box-shadow:0 0 0 3px rgba(0,0,0,.22)}
+.mini .fs::after{inset:8px}
+.mini .led{width:9px;height:9px}
+.shelfcap{display:flex;gap:12px;margin-top:8px}
+.shelfcap div{width:96px;font-size:10.5px;font-weight:800;color:var(--ink3);text-align:center;line-height:1.4}
+.shelfcap button{margin-top:3px;font-size:11px;font-weight:900;color:var(--ink);border:1.5px solid var(--line);border-radius:8px;padding:3px 6px;background:var(--card)}
+
+/* ---------- day1 ---------- */
+.emptyboard{margin-top:14px;border-radius:18px;background:var(--slat);padding:16px;position:relative;min-height:330px}
+.velcro{position:absolute;left:16px;right:16px;height:14px;border-radius:4px;background:repeating-linear-gradient(90deg,rgba(255,255,255,.07) 0 2px,transparent 2px 4px)}
+:root.light .velcro{background:repeating-linear-gradient(90deg,rgba(0,0,0,.08) 0 2px,transparent 2px 4px)}
+.build{display:flex;gap:16px;align-items:flex-start;position:relative;z-index:1}
+.build .pedal{width:160px;flex:none}
+.build .side{flex:1;padding-top:6px}
+.build .side h2{font-size:22px;font-weight:900;line-height:1.3}
+.build .side p{font-size:12.5px;font-weight:700;color:var(--ink2);line-height:1.6;margin-top:8px}
+.seg{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px}
+.seg button{height:78px;border-radius:14px;background:var(--card);border:2px solid var(--line);font-size:13px;font-weight:900;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px}
+.seg button.on{border-color:var(--ink);box-shadow:0 0 0 2px var(--ink) inset}
+.seg .sil{width:28px;height:30px;border-radius:6px;background:var(--ink3)}
+.seg .sil.c{border-radius:12px 12px 6px 6px}
+.seg .sil.s{width:40px;height:26px}
+.sw{display:flex;gap:12px;margin-top:12px;align-items:center}
+.sw .l{font-size:13px;font-weight:800;color:var(--ink2);width:40px}
+.sw button{width:38px;height:38px;border-radius:12px;box-shadow:0 3px 0 rgba(0,0,0,.35)}
+.sw button.on{outline:3px solid var(--ink);outline-offset:2px}
+.nameIn{display:flex;gap:10px;margin-top:12px;align-items:center}
+.nameIn .l{font-size:13px;font-weight:800;color:var(--ink2);width:40px}
+.nameIn input{flex:1;height:44px;border-radius:12px;border:2px solid var(--line);background:var(--card);color:var(--ink);font:inherit;font-size:15px;font-weight:800;padding:0 12px}
+.place{display:block;width:100%;height:60px;margin-top:14px;border-radius:16px;background:var(--dist);color:#1b1b1f;font-size:19px;font-weight:900;box-shadow:0 5px 0 var(--dist-lo)}
+.place:active{transform:translateY(3px);box-shadow:0 2px 0 var(--dist-lo)}
+
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#111;color:#fff;font-size:13px;font-weight:800;padding:8px 14px;border-radius:10px;opacity:0;transition:opacity .2s;z-index:60;pointer-events:none}
+.toast.on{opacity:.92}
+@media (prefers-reduced-motion:reduce){*{animation-duration:1ms!important;transition-duration:1ms!important}}
+</style>
+</head>
+<body>
+<nav id="nav" aria-label="画面切替">
+  <a href="#home">home</a><a href="#home-day1">day1</a><a href="#home-gap">gap</a><a href="#rec">rec</a>
+  <a href="#celebrate">celebrate</a><a href="#diag">diag</a><a href="#extra">extra</a><a href="#home-after">after</a><a href="#extra2">extra2</a>
+  <span class="sp"></span>
+  <button id="tgTheme" type="button">ライト/ダーク</button><button id="tgSound" type="button">音 ON</button><button id="tgVib" type="button">振動 ON</button>
+</nav>
+<div class="app" id="app">
+
+<!-- ================= HOME ================= -->
+<section class="screen" id="s-home" data-variant="week">
+  <div class="topline"><h1>今日のボード</h1><span class="date">9/30 水</span></div>
+  <div class="chain">
+    <div class="lbl"><span>今日のシグナルチェーン</span><span class="cstate">まだ何もつながっていません</span></div>
+    <svg class="chainsvg" width="334" height="44" viewBox="0 0 334 44" aria-label="今日のシグナルチェーン"></svg>
+    <div class="past" aria-label="これまでのチェーン(録った日だけ)"></div>
+  </div>
+  <div class="board"><div class="grid pgrid"></div></div>
+  <div class="hint">光っているのを踏む <span class="ar">→</span> 録音</div>
+  <p class="note hnote" style="text-align:center;margin-top:6px">つまみは前回の自分との位置。正しさではなく、揃い具合を示します</p>
+</section>
+
+<!-- ================= DAY1 ================= -->
+<section class="screen" id="s-home-day1">
+  <div class="topline"><h1>今日のボード</h1><span class="date">9/30 水</span></div>
+  <div class="emptyboard">
+    <div class="velcro" style="top:120px"></div><div class="velcro" style="top:250px"></div>
+    <div class="build">
+      <div id="d1pedal"></div>
+      <div class="side">
+        <h2>最初のペダルを作る</h2>
+        <p>引っかかっているフレーズを 1 本、1 台のペダルにします。名前は筐体に刻印されます。</p>
+        <p>最初の 1 本は比べる相手がいないので、音は拍の線にはまります。</p>
+      </div>
+    </div>
+  </div>
+  <div class="seg" role="radiogroup" aria-label="種類">
+    <button type="button" data-k="single" class="on" role="radio" aria-checked="true"><span class="sil"></span>単音フレーズ</button>
+    <button type="button" data-k="chord" role="radio" aria-checked="false"><span class="sil c"></span>和音の練習</button>
+    <button type="button" data-k="song" role="radio" aria-checked="false"><span class="sil s"></span>曲通し</button>
+  </div>
+  <div class="sw" aria-label="筐体の色">
+    <span class="l">色</span>
+    <button type="button" data-c="dist" class="on" style="background:var(--dist)" aria-label="橙"></button>
+    <button type="button" data-c="cho" style="background:var(--cho)" aria-label="青"></button>
+    <button type="button" data-c="od" style="background:var(--od)" aria-label="黄"></button>
+    <button type="button" data-c="dly" style="background:var(--dly)" aria-label="緑"></button>
+  </div>
+  <div class="nameIn"><span class="l">刻印</span><input id="d1name" value="16分のオルタネイト" maxlength="18" aria-label="ペダルの名前"></div>
+  <button class="place" type="button" id="d1place">ボードに置く</button>
+</section>
+
+<!-- ================= REC ================= -->
+<section class="screen" id="s-rec">
+  <div class="rectop">
+    <div class="recbar"><span class="recdot" aria-hidden="true"></span><span>REC</span><span class="tnum">♩=58</span></div>
+    <div class="recname">16分のオルタネイト</div>
+    <div class="beat tnum" id="beatNum" aria-label="3 拍目">3</div>
+    <div class="beatdots" id="beatDots"><i></i><i></i><i class="on"></i><i></i></div>
+    <div class="elapsed tnum" id="elapsed">0:09</div>
+    <div class="level" aria-label="入力レベル(録れています)"><i id="lvl"></i></div>
+    <div class="recquiet">録音中は、音も振動も出しません</div>
+  </div>
+  <button class="stomp" type="button" id="stomp" aria-label="踏んで止める">
+    <span class="bigfs" aria-hidden="true"></span>
+    <span class="stomplbl">踏んで止める</span>
+    <span class="btnote">Bluetooth の譜めくりペダルでも止められます(どのキーでも)</span>
+  </button>
+</section>
+
+<!-- ================= CELEBRATE ================= -->
+<section class="screen" id="s-celebrate">
+  <div class="dhead"><div class="t">9/30 · 今日の 1 本目</div><div class="h">16分のオルタネイト<span>♩=58</span></div></div>
+  <div class="tray" id="trayC">
+    <div class="cap"><span>前回の自分の位置に、はめています</span></div>
+    <div class="rows"></div>
+    <span class="skip">タップで早送り</span>
+  </div>
+  <p class="note" style="margin-top:10px">凹んだ枠 = 前回(9/29)のあなたが弾いた位置。はまる音は「前回と同じに弾けた」音で、正しさではありません。</p>
+</section>
+
+<!-- ================= DIAG ================= -->
+<section class="screen" id="s-diag">
+  <div class="dhead"><div class="t">9/30 · 今日の 1 本目 · 前回(9/29)と</div><div class="h">16分のオルタネイト<span>♩=58</span></div></div>
+  <div class="tray" id="trayD">
+    <div class="cap"><span>前回の位置に、はまりました</span></div>
+    <div class="rows"></div>
+  </div>
+  <div class="nums" aria-label="数字">
+    <div class="nrow"><span class="k">ばらつき</span><span class="v tnum" aria-label="ばらつき 14ミリ秒から13ミリ秒"><span class="p">14</span><span class="to">→</span>13<span class="u">ms</span></span><span class="tag">横ばい · 帯 ±6ms の中</span></div>
+    <div class="nrow"><span class="k">音符一致率</span><span class="v tnum" aria-label="一致率 83%から92%"><span class="p">83</span><span class="to">→</span>92<span class="u">%</span></span><span class="tag">前回より高い</span></div>
+    <div class="nrow"><span class="k">弾き忘れ+余分</span><span class="v tnum"><span class="p">6</span><span class="to">→</span>2</span><span class="tag">前回より少ない</span></div>
+  </div>
+  <div class="knobs" id="knobs"></div>
+  <div class="legend"><i><svg width="14" height="6"><rect width="14" height="6" rx="3" fill="var(--amberish,#FF8A1F)"/></svg></i>これまでの 5 本の幅<i><svg width="14" height="8"><rect width="14" height="8" fill="url(#hatchL)"/></svg></i>横ばいの帯<i><svg width="4" height="10"><rect width="4" height="10" rx="1" fill="#9A9AA3"/></svg></i>前回</div>
+  <div class="pair">
+    <button class="pbtn" type="button" data-go="rec">もう 1 回踏む<small>♩=58 のまま</small></button>
+    <button class="pbtn" type="button" data-go="rec">♩=63 へ<small>訪ねてみる</small></button>
+  </div>
+  <button class="back" type="button" data-go="extra">ボードへ戻る</button>
+</section>
+
+<!-- ================= EXTRA (居場所) ================= -->
+<section class="screen" id="s-extra">
+  <div class="dhead"><div class="t">ペダルの中</div><div class="h">16分のオルタネイト<span>♩=58</span></div></div>
+  <div class="card">
+    <div style="font-size:14px;font-weight:800;color:var(--ink2)">テンポの居場所</div>
+    <div style="display:flex;align-items:center;gap:12px;margin-top:6px">
+      <span class="tnum" style="font-size:20px">♩=58 で揃った回</span>
+      <div class="dots3" style="margin:0" id="dots3"><i class="f"></i><i class="f"></i><i class="f" id="dot3"></i></div>
+    </div>
+    <div class="bigmsg">♩=58 が居場所になりました</div>
+    <div class="scale" id="scale1"></div>
+    <div class="metro">
+      <svg width="60" height="74" viewBox="0 0 60 74" aria-hidden="true">
+        <path d="M18 6 L42 6 L54 70 L6 70 Z" fill="var(--wood)" stroke="rgba(0,0,0,.3)"/>
+        <path d="M22 14 L38 14 L46 64 L14 64 Z" fill="#F4E6D0"/>
+        <g class="pend" id="pend"><line x1="30" y1="64" x2="30" y2="14" stroke="#222" stroke-width="3" stroke-linecap="round"/><rect x="25" y="26" width="10" height="8" rx="2" fill="#222"/></g>
+      </svg>
+      <p class="note" style="flex:1">前回と横ばいの回が 3 本そろうと、そのテンポが居場所になります。♩=63 は「訪ねた」点として淡く残っています。居場所は、弾かない日があっても減りません。</p>
+    </div>
+  </div>
+  <div class="card" style="padding:12px 16px">
+    <div style="font-size:13px;font-weight:800;color:var(--ink2)">今日の 1 本</div>
+    <div class="tnum" style="font-size:20px;margin-top:4px">ばらつき 13ms · 一致率 92%</div>
+    <p class="note" style="margin-top:4px">揃い具合の指標です。正しさの点数ではありません。</p>
+  </div>
+  <button class="place" type="button" data-go="home-after" style="margin-top:16px">ボードへ戻る(ケーブルをつなぐ)</button>
+</section>
+
+<!-- ================= HOME AFTER ================= -->
+<section class="screen" id="s-home-after" data-variant="after">
+  <div class="topline"><h1>今日のボード</h1><span class="date">9/30 水</span></div>
+  <div class="chain">
+    <div class="lbl"><span>今日のシグナルチェーン</span><span class="cstate">1 台つながりました</span></div>
+    <svg class="chainsvg" width="334" height="44" viewBox="0 0 334 44" aria-label="今日のシグナルチェーン: 16分のオルタネイト"></svg>
+    <div class="past"></div>
+  </div>
+  <div class="board"><div class="grid pgrid"></div></div>
+  <div class="hint" style="font-size:17px">今日のチェーンは、この 1 台でひとつの形です</div>
+  <p class="note" style="text-align:center;margin-top:6px">ほかのペダルも踏めます(LED は消えていても踏めます)</p>
+</section>
+
+<!-- ================= EXTRA2 (1 か月後) ================= -->
+<section class="screen" id="s-extra2">
+  <div class="topline"><h1>1 か月後</h1><span class="date">10/30 金</span></div>
+  <div class="card" style="margin-top:10px">
+    <div style="display:flex;justify-content:space-between;align-items:baseline">
+      <span style="font-size:15px;font-weight:900">16分のオルタネイト の中</span>
+      <span class="tnum" style="font-size:14px;color:var(--ink2)">居場所 ♩58〜66</span>
+    </div>
+    <div class="scale" id="scale2"></div>
+    <div class="hist">
+      <div><b>9/30</b>♩=58 が居場所に</div>
+      <div><b>10/09</b>♩=60 が居場所に</div>
+      <div><b>10/17</b>♩=63 が居場所に</div>
+      <div><b>10/28</b>♩=66 が居場所に · ♩=69 を訪ねた</div>
+    </div>
+    <p class="note" style="margin-top:6px">左端の ♩=58 もそのまま残っています。ゆっくり弾く日も、居場所の中です。</p>
+  </div>
+  <div style="font-size:15px;font-weight:900;margin-top:16px">棚</div>
+  <div class="shelf">
+    <div class="items" id="shelfItems"></div>
+    <div class="plank"></div>
+  </div>
+  <div class="shelfcap" id="shelfCap"></div>
+  <p class="note" style="margin-top:10px">解決したペダルはボードから外して棚に。たまに戻して踏めば、持ち曲の確かめになります。</p>
+</section>
+
+</div>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="5" height="5" fill="rgba(255,255,255,.10)"/><rect width="2" height="5" fill="rgba(255,255,255,.35)"/></pattern>
+    <pattern id="hatchL" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="5" height="5" fill="rgba(140,140,150,.15)"/><rect width="2" height="5" fill="rgba(140,140,150,.6)"/></pattern>
+  </defs>
+</svg>
+<div class="toast" id="toast"></div>
+
+<script>
+const Q = new URLSearchParams(location.search);
+const ANIM = Q.get('anim') !== '0';
+if (Q.get('shot') === '1' || Q.get('chrome') === '0') document.documentElement.classList.add('shot');
+if (Q.get('theme') === 'light') document.documentElement.classList.add('light');
+let SOUND = Q.get('mute') !== '1', VIB = true;
+
+const DATA = {
+  threads: [
+    { id:'t1', short:'16分のオルタネイト', sub:'Amペンタ 5〜8f', model:'ALT·16', kind:'single', col:'', place:'♩58 で揃った回 ●●○', knobs:[-40,70,0] },
+    { id:'t2', short:'F→B♭ の押さえ替え', sub:'アルペジオ', model:'F→B♭', kind:'chord', col:'cho', place:'居場所 ♩56〜60', knobs:[-60,40,10] },
+    { id:'t3', short:'G→C→D→G', sub:'ストローク', model:'G·C·D', kind:'chord', col:'od', place:'居場所 ♩66〜72', knobs:[-20,20,-10] },
+    { id:'t4', short:'クロマチック上行', sub:'基礎練', model:'CHROMA', kind:'single', col:'dly', place:'居場所 ♩72〜80', knobs:[30,10,0] },
+  ],
+  pastWeek: [ ['9/29',['dist','cho','od']], ['9/28',['dly']], ['9/27',['dist','cho']], ['9/25',['dist','od']], ['9/22',['dist','dly','cho']] ],
+  pastGap:  [ ['9/18',['dist','cho']], ['9/16',['dist']], ['9/15',['dist','od','dly']], ['9/13',['cho','dist']], ['9/11',['dist']] ],
+  resolved: [
+    { model:'OPEN16', nm:'開放弦の16分', col:'dly', when:'8/30 に解決', kind:'single' },
+    { model:'PENTA↓', nm:'Amペンタ 下降', col:'', when:'9/10 に解決', kind:'single' },
+    { model:'F→B♭', nm:'F→B♭ の押さえ替え', col:'cho', when:'10/21 に解決', kind:'chord' },
+  ],
+};
+const COLVAR = {'':'--dist',dist:'--dist',cho:'--cho',od:'--od',dly:'--dly'};
+
+/* ---------- sound / vibe ---------- */
+let AC = null;
+function ac(){ if(!AC){ try{ AC = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} } return AC; }
+function tone(f, dur, type, vol, at=0){
+  const c = ac(); if(!c || !SOUND) return;
+  const t = c.currentTime + at, o = c.createOscillator(), g = c.createGain();
+  o.type = type; o.frequency.setValueAtTime(f, t); o.frequency.exponentialRampToValueAtTime(f*0.6, t+dur);
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t+dur);
+  o.connect(g).connect(c.destination); o.start(t); o.stop(t+dur+0.02);
+}
+const sfx = {
+  stomp(){ tone(1800,.03,'square',.08); tone(420,.06,'triangle',.18,.005); },
+  kachi(){ tone(2600,.025,'square',.05); tone(1300,.04,'triangle',.08,.004); },
+  koton(){ tone(190,.16,'sine',.25); tone(320,.08,'triangle',.08,.01); },
+  pin(){ tone(880,.12,'triangle',.08); tone(1320,.18,'sine',.05,.03); },
+  tick(){ tone(1500,.03,'square',.05); },
+};
+function vib(ms){ if(VIB && navigator.vibrate) try{ navigator.vibrate(ms); }catch(e){} }
+
+/* ---------- pedal markup ---------- */
+function pedalHTML(t, lit){
+  const cls = ['pedal', t.col, 'k-'+t.kind].filter(Boolean).join(' ');
+  const kn = t.knobs.map(a=>`<span class="mk" style="--a:${a}deg"></span>`).join('');
+  return `<button type="button" class="${cls}" data-id="${t.id}" aria-label="${t.short}${lit?'(今日の一本・LED 点灯)':''}">
+    <div class="row1"><span class="led ${lit?'on':''}"></span>${kn}</div>
+    <div class="model">${t.model}</div>
+    <div class="nm">${t.short}<br><span style="opacity:.75;font-weight:700">${t.sub}</span></div>
+    <span class="ib">${t.place}</span>
+    <span class="fs" aria-hidden="true"></span>
+  </button>`;
+}
+
+/* ---------- chain svg ---------- */
+function drawChain(svg, colors, pinAnim){
+  const W=334, jackW=44, y=22;
+  let h = `<rect x="0" y="8" width="${jackW}" height="28" rx="7" fill="#1a1a1e" stroke="rgba(255,255,255,.18)"/>
+    <text x="${jackW/2}" y="26" text-anchor="middle" font-size="11" font-weight="900" fill="#ddd" font-family="Arial Black,sans-serif">GTR</text>
+    <rect x="${W-jackW}" y="8" width="${jackW}" height="28" rx="7" fill="#1a1a1e" stroke="rgba(255,255,255,.18)"/>
+    <text x="${W-jackW/2}" y="26" text-anchor="middle" font-size="11" font-weight="900" fill="#ddd" font-family="Arial Black,sans-serif">AMP</text>`;
+  if(!colors.length){
+    h += `<path d="M${jackW} ${y} Q ${W/2} ${y+18} ${W-jackW} ${y}" fill="none" stroke="#6a6a74" stroke-width="3" stroke-dasharray="2 6" stroke-linecap="round"/>
+      <text x="${W/2}" y="${y+4}" text-anchor="middle" font-size="11" font-weight="800" fill="#8E8E98">録った台がここにつながる</text>`;
+    svg.innerHTML = h; return;
+  }
+  const n = colors.length, cw = 30, gap = 34;
+  const total = n*cw + (n-1)*gap, x0 = (W-total)/2;
+  const pts = [[jackW, y]];
+  const chips = [];
+  colors.forEach((c,i)=>{ const x = x0 + i*(cw+gap); pts.push([x,y],[x+cw,y]); chips.push(`<rect x="${x}" y="6" width="${cw}" height="32" rx="7" fill="var(${COLVAR[c]})"/><rect x="${x}" y="6" width="${cw}" height="11" rx="7" fill="rgba(255,255,255,.35)"/><circle cx="${x+cw/2}" cy="29" r="5" fill="#ddd" stroke="rgba(0,0,0,.3)"/><circle cx="${x+7}" cy="12" r="2.5" fill="#FF3B30"/>`); });
+  pts.push([W-jackW, y]);
+  const segs = []; for(let i=0;i<pts.length;i+=2) segs.push([pts[i],pts[i+1]]);
+  const paths = segs.map((s,i)=>`<path class="cab" data-i="${i}" d="" fill="none" stroke="#111" stroke-width="4" stroke-linecap="round"/>`).join('');
+  svg.innerHTML = h + paths + chips.join('');
+  const cabs = svg.querySelectorAll('.cab');
+  const setSag = (sag)=>cabs.forEach((p,i)=>{ const [[ax,ay],[bx,by]] = segs[i]; p.setAttribute('d',`M${ax} ${ay} Q ${(ax+bx)/2} ${ay+sag} ${bx} ${by}`); p.setAttribute('stroke', getComputedStyle(document.documentElement).getPropertyValue('--ink3')); });
+  if(!pinAnim || !ANIM){ setSag(0); return; }
+  setSag(16);
+  setTimeout(()=>{
+    sfx.pin(); vib(12);
+    const t0 = performance.now();
+    (function f(now){ const k = Math.min(1,(now-t0)/300); const s = 16*(1-k) + (-5)*Math.sin(k*Math.PI)*(1-k*.3); setSag(k>=1?0:s); if(k<1) requestAnimationFrame(f); })(t0);
+  }, 500);
+}
+function drawPast(el, list){
+  el.innerHTML = list.map(([d,cs])=>`<span class="ph">${d} ${cs.map(c=>`<i style="background:var(${COLVAR[c]})"></i>`).join('<b></b>')}</span>`).join('');
+}
+
+/* ---------- home ---------- */
+function renderHome(sec, variant){
+  const grid = sec.querySelector('.pgrid');
+  grid.innerHTML = DATA.threads.map(t=>pedalHTML(t, t.id==='t1')).join('');
+  const past = sec.querySelector('.past');
+  drawPast(past, variant==='gap' ? DATA.pastGap : DATA.pastWeek);
+  if(variant==='after'){
+    grid.querySelector('[data-id="t1"] .ib').textContent = '居場所 ♩=58';
+    drawChain(sec.querySelector('.chainsvg'), ['dist'], true);
+  } else drawChain(sec.querySelector('.chainsvg'), [], false);
+  grid.querySelectorAll('.pedal').forEach(p=>bindPress(p, ()=>{
+    if(p.dataset.id==='t1') go('rec'); else toast('このペダルの中へ(モックでは省略)');
+  }));
+}
+function bindPress(el, fn){
+  const led = el.querySelector('.led');
+  el.addEventListener('pointerdown', ()=>{ el.classList.add('down'); ac(); sfx.stomp(); vib(15); if(led){ led.dataset.was = led.classList.contains('on')?'1':''; led.classList.add('on'); } });
+  const up = (fire)=>{ if(!el.classList.contains('down')) return; el.classList.remove('down'); if(led && !led.dataset.was) setTimeout(()=>led.classList.remove('on'),220); if(fire) setTimeout(fn,160); };
+  el.addEventListener('pointerup', ()=>up(true));
+  el.addEventListener('pointerleave', ()=>up(false));
+}
+
+/* ---------- day1 ---------- */
+const D1 = { kind:'single', col:'' };
+function renderD1(){
+  const name = document.getElementById('d1name').value || '名前のないペダル';
+  const t = { id:'new', short:name, sub:D1.kind==='single'?'単音フレーズ':D1.kind==='chord'?'和音の練習':'曲通し', model:D1.kind==='song'?'SONG·1':D1.kind==='chord'?'CHORD':'NEW·01', kind:D1.kind, col:D1.col, place:'はじめの 1 本を待っています', knobs:[0,0,0] };
+  document.getElementById('d1pedal').innerHTML = pedalHTML(t, true);
+  const p = document.querySelector('#d1pedal .pedal');
+  if(D1.kind==='song'){ p.style.width='160px'; }
+  bindPress(p, ()=>toast('ボードに置いて、踏むと録音が始まります'));
+}
+document.querySelectorAll('#s-home-day1 .seg button').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('#s-home-day1 .seg button').forEach(x=>{x.classList.remove('on');x.setAttribute('aria-checked','false')});
+  b.classList.add('on'); b.setAttribute('aria-checked','true'); D1.kind=b.dataset.k;
+  if(D1.kind==='chord' && D1.col==='') selCol('cho'); else if(D1.kind==='song' && D1.col==='') selCol('dly'); else renderD1();
+  sfx.tick(); vib(8);
+}));
+function selCol(c){ D1.col = c==='dist'?'':c; document.querySelectorAll('#s-home-day1 .sw button').forEach(x=>x.classList.toggle('on', x.dataset.c===c)); renderD1(); }
+document.querySelectorAll('#s-home-day1 .sw button').forEach(b=>b.addEventListener('click',()=>{ selCol(b.dataset.c); sfx.tick(); vib(8); }));
+document.getElementById('d1name').addEventListener('input', renderD1);
+document.getElementById('d1place').addEventListener('click', ()=>{ vib(15); sfx.stomp(); toast('ボードに置きました。LED が点いています'); });
+
+/* ---------- rec ---------- */
+let recTimer = null;
+function startRec(){
+  stopRec();
+  const bn = document.getElementById('beatNum'), dots = [...document.querySelectorAll('#beatDots i')], el = document.getElementById('elapsed'), lvl = document.getElementById('lvl');
+  if(!ANIM) return;
+  let beat = 2, t0 = performance.now() - 9000;
+  recTimer = setInterval(()=>{
+    beat = (beat+1)%4; bn.textContent = beat+1; bn.setAttribute('aria-label',(beat+1)+' 拍目');
+    dots.forEach((d,i)=>d.classList.toggle('on', i===beat));
+    const s = Math.floor((performance.now()-t0)/1000); el.textContent = Math.floor(s/60)+':'+String(s%60).padStart(2,'0');
+    lvl.style.width = (30+Math.random()*45)+'%';
+  }, 60000/58);  // 録音中は音・振動なし
+}
+function stopRec(){ if(recTimer) clearInterval(recTimer); recTimer=null; }
+const stomp = document.getElementById('stomp');
+stomp.addEventListener('pointerdown', ()=>stomp.classList.add('down'));
+stomp.addEventListener('pointerup', ()=>{ stomp.classList.remove('down'); endRec(); });
+function endRec(){ stopRec(); ac(); sfx.stomp(); vib(15); go('celebrate'); }
+document.addEventListener('keydown', e=>{ if(cur==='rec'){ e.preventDefault(); endRec(); } });
+
+/* ---------- tray ---------- */
+function rng(seed){ return ()=>{ seed|=0; seed=seed+0x6D2B79F5|0; let t=Math.imul(seed^seed>>>15,1|seed); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+const R = rng(20260930);
+const NOTES = Array.from({length:26},(_,i)=>{ const prev=(R()*2-1)*10, cur=prev+(R()*2-1)*4; return {prev, cur: i===6 ? prev+62 : cur, out: i===6}; });
+const PITCH = 42.6, SCALE = 0.55; // 1ms → 0.55px(見やすく拡大)
+function buildTray(root, state){
+  const rows = root.querySelector('.rows'); rows.innerHTML='';
+  const els=[];
+  for(let r=0;r<4;r++){
+    const row = document.createElement('div'); row.className='trow';
+    row.innerHTML = `<span class="beatno">${r*2+1}〜${r*2+2} 拍</span><span class="rail"></span>`;
+    for(let j=0;j<8;j++){
+      const i=r*8+j; if(i>=26) break;
+      const n=NOTES[i], x = 4 + j*PITCH + n.prev*SCALE;
+      const s=document.createElement('span'); s.className='slot'; s.style.left=x+'px'; row.appendChild(s);
+      const e=document.createElement('span'); e.className='nt'+(n.out?' out':'');
+      e.style.left = (n.out ? x+14 : x+3+(n.cur-n.prev)*SCALE)+'px';
+      row.appendChild(e); els.push({e,s,n,i,row,x});
+    }
+    rows.appendChild(row);
+  }
+  return els;
+}
+function addKoton(o){
+  const k=document.createElement('span'); k.className='koton';
+  k.innerHTML='ことん <small>7 音目 +62ms</small>';
+  k.style.right='-2px'; k.style.top='-19px'; o.row.appendChild(k);
+}
+let dropTimers=[];
+function clearDrops(){ dropTimers.forEach(clearTimeout); dropTimers=[]; }
+function playDrops(els, upto, onEnd){
+  clearDrops();
+  els.forEach((o,idx)=>{
+    if(idx>upto) return;
+    dropTimers.push(setTimeout(()=>{
+      o.e.classList.add('in');
+      dropTimers.push(setTimeout(()=>{
+        if(o.n.out){ sfx.koton(); vib(20); addKoton(o); }
+        else { sfx.kachi(); vib(8); o.s.classList.add('flash'); setTimeout(()=>o.s.classList.remove('flash'),60); }
+      }, 190));
+    }, 300 + idx*60));
+  });
+  if(onEnd) dropTimers.push(setTimeout(onEnd, 300+upto*60+500));
+}
+function renderCelebrate(){
+  const root=document.getElementById('trayC'); const els=buildTray(root);
+  const MID=15;
+  if(!ANIM){
+    els.forEach((o,idx)=>{ if(idx<MID) o.e.classList.add('set'); else if(idx===MID) o.e.classList.add('air'); });
+    addKoton(els[6]);
+  } else {
+    playDrops(els, 25, ()=>{ sfx.kachi(); sfx.pin(); setTimeout(()=>go('diag'),900); });
+    root.onclick=()=>{ clearDrops(); go('diag'); };
+  }
+}
+function renderDiag(){
+  const root=document.getElementById('trayD'); const els=buildTray(root);
+  els.forEach(o=>o.e.classList.add('set')); addKoton(els[6]);
+  renderKnobs();
+}
+
+/* ---------- knobs ---------- */
+function arc(cx,cy,r,a0,a1){ const p=a=>[cx+r*Math.sin(a*Math.PI/180), cy-r*Math.cos(a*Math.PI/180)]; const [x0,y0]=p(a0),[x1,y1]=p(a1); return `M${x0.toFixed(1)} ${y0.toFixed(1)} A${r} ${r} 0 ${a1-a0>180?1:0} 1 ${x1.toFixed(1)} ${y1.toFixed(1)}`; }
+function knobSVG(k){
+  const S=104, c=S/2, A=v=>-135+270*(Math.max(k.min,Math.min(k.max,v))-k.min)/(k.max-k.min);
+  const light = document.documentElement.classList.contains('light');
+  const track = light?'rgba(0,0,0,.10)':'rgba(255,255,255,.10)';
+  let s=`<svg width="${S}" height="${S-8}" viewBox="0 0 ${S} ${S-8}" role="img" aria-label="${k.aria}">`;
+  s+=`<path d="${arc(c,c,44,-135,135)}" stroke="${track}" stroke-width="10" fill="none" stroke-linecap="round"/>`;
+  if(k.band) s+=`<path d="${arc(c,c,44,A(k.band[0]),A(k.band[1]))}" stroke="url(#${light?'hatchL':'hatch'})" stroke-width="10" fill="none"/>`;
+  s+=`<path d="${arc(c,c,33,A(k.range[0]),A(k.range[1]))}" stroke="#FF8A1F" stroke-width="5" fill="none" stroke-linecap="round"/>`;
+  if(k.zero!=null){ const a=A(k.zero)*Math.PI/180; s+=`<line x1="${c+49*Math.sin(a)}" y1="${c-49*Math.cos(a)}" x2="${c+39*Math.sin(a)}" y2="${c-39*Math.cos(a)}" stroke="${light?'#555':'#ccc'}" stroke-width="1.5"/>`; }
+  const pa=A(k.prev)*Math.PI/180;
+  s+=`<line x1="${c+52*Math.sin(pa)}" y1="${c-52*Math.cos(pa)}" x2="${c+36*Math.sin(pa)}" y2="${c-36*Math.cos(pa)}" stroke="#9A9AA3" stroke-width="4" stroke-linecap="round"/>`;
+  s+=`<circle cx="${c}" cy="${c}" r="27" fill="url(#kg)"/><defs><radialGradient id="kg" cx=".4" cy=".35" r=".7"><stop offset="0" stop-color="#55555e"/><stop offset="1" stop-color="#141417"/></radialGradient></defs>`;
+  const ca=A(k.cur)*Math.PI/180;
+  s+=`<line x1="${c+8*Math.sin(ca)}" y1="${c-8*Math.cos(ca)}" x2="${c+24*Math.sin(ca)}" y2="${c-24*Math.cos(ca)}" stroke="#fff" stroke-width="4" stroke-linecap="round"/>`;
+  return s+'</svg>';
+}
+function renderKnobs(){
+  const K=[
+    {l:'ばらつき', v:'13<span style="font-size:12px"> ms</span>', p:'前回 14 · 帯 8〜20', min:0,max:30,cur:13,prev:14,range:[13,21],band:[8,20], aria:'ばらつき 13ms、前回 14ms、これまでの幅 13〜21ms、横ばいの帯 8〜20ms'},
+    {l:'音符一致', v:'92<span style="font-size:12px"> %</span>', p:'前回 83 · 幅 70〜92', min:50,max:100,cur:92,prev:83,range:[70,92], aria:'一致率 92%、前回 83%、これまでの幅 70〜92%'},
+    {l:'テンポ差', v:'−0.1<span style="font-size:12px"> %</span>', p:'前回 +0.6', min:-5,max:5,cur:-0.1,prev:0.6,range:[-1.2,0.8],zero:0, aria:'テンポ差 マイナス0.1%、前回 プラス0.6%'},
+  ];
+  document.getElementById('knobs').innerHTML = K.map(k=>`<div class="knob">${knobSVG(k)}<div class="kl">${k.l}</div><div class="kv tnum">${k.v}</div><div class="kp">${k.p}</div></div>`).join('');
+}
+
+/* ---------- scale (居場所) ---------- */
+const TEMPOS=[50,54,58,60,63,66,69,72];
+function renderScale(el, bandFrom, bandTo, visits, grow, mark){
+  const W=el.clientWidth||326, pad=16, step=(W-pad*2)/(TEMPOS.length-1), X=t=>pad+TEMPOS.indexOf(t)*step;
+  let h=`<span class="qn">♩=</span><div class="plate"></div>`;
+  if(bandFrom!=null){ const x0=X(bandFrom)-step*0.42, x1=X(bandTo)+step*0.42; h+=`<div class="band ${grow&&ANIM?'grow':''}" style="left:${x0}px;width:${x1-x0}px"></div>`; }
+  TEMPOS.forEach(t=>{ h+=`<span class="tick" style="left:${X(t)}px"></span><span class="tl ${t===mark?'m':''} tnum" style="left:${X(t)}px">${t}</span>`; });
+  visits.forEach(t=>{ h+=`<span class="visit" style="left:${X(t)}px" title="訪ねたテンポ"></span>`; });
+  el.innerHTML=h;
+}
+function renderExtra(){
+  renderScale(document.getElementById('scale1'), 58, 58, [63], true, 58);
+  const d=document.getElementById('dot3'), p=document.getElementById('pend');
+  d.classList.remove('pop'); p.classList.remove('swing');
+  if(ANIM){ void d.offsetWidth; d.classList.add('pop'); setTimeout(()=>{ p.classList.add('swing'); sfx.tick(); setTimeout(sfx.tick,550); vib(15); }, 500); }
+}
+function renderExtra2(){
+  renderScale(document.getElementById('scale2'), 58, 66, [69], false, 66);
+  const it=document.getElementById('shelfItems'), cap=document.getElementById('shelfCap');
+  it.innerHTML = DATA.resolved.map(r=>`<div class="mini pedal-mini ${r.col}" style="--c:var(${COLVAR[r.col]});--hi:var(${COLVAR[r.col]}-hi);--lo:var(${COLVAR[r.col]}-lo);${r.kind==='chord'?'border-radius:20px 20px 12px 12px;':''}${r.col==='cho'?'color:#fff':''}"><span class="led"></span><div class="model">${r.model}</div><div class="nm">${r.nm}</div><span class="fs"></span></div>`).join('');
+  cap.innerHTML = DATA.resolved.map(r=>`<div>${r.when}<br><button type="button">戻して踏む</button></div>`).join('');
+  cap.querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>{ sfx.stomp(); vib(15); toast('ボードに戻しました(モック)'); }));
+}
+
+/* ---------- router ---------- */
+const SCREENS=['home','home-day1','home-gap','rec','celebrate','diag','extra','home-after','extra2'];
+let cur=null;
+function go(h){ location.hash = h; }
+function show(){
+  let h = location.hash.replace('#','') || 'home'; if(!SCREENS.includes(h)) h='home';
+  cur=h; clearDrops(); stopRec();
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('on'));
+  const id = h==='home-gap' ? 's-home' : 's-'+h;
+  const sec=document.getElementById(id); sec.classList.add('on');
+  document.querySelectorAll('#nav a').forEach(a=>a.classList.toggle('on', a.getAttribute('href')==='#'+h));
+  window.scrollTo(0,0);
+  if(h==='home') renderHome(sec,'week');
+  if(h==='home-gap'){ renderHome(sec,'gap'); }
+  if(h==='home-after') renderHome(sec,'after');
+  if(h==='home-day1') renderD1();
+  if(h==='rec') startRec();
+  if(h==='celebrate') renderCelebrate();
+  if(h==='diag') renderDiag();
+  if(h==='extra') renderExtra();
+  if(h==='extra2') renderExtra2();
+  const hn = document.querySelector('#s-home .hnote');
+  hn.textContent = h==='home-gap' ? '今日の 1 本目は、いまの自分を測るだけ。比べるのは 2 本目から' : 'つまみは前回の自分との位置。正しさではなく、揃い具合を示します';
+}
+document.querySelectorAll('[data-go]').forEach(b=>b.addEventListener('click',()=>{ b.classList.add('down'); sfx.stomp(); vib(15); setTimeout(()=>{ b.classList.remove('down'); go(b.dataset.go); },140); }));
+window.addEventListener('hashchange', show);
+document.getElementById('tgTheme').onclick=()=>{ document.documentElement.classList.toggle('light'); show(); };
+document.getElementById('tgSound').onclick=e=>{ SOUND=!SOUND; e.target.textContent='音 '+(SOUND?'ON':'OFF'); };
+document.getElementById('tgVib').onclick=e=>{ VIB=!VIB; e.target.textContent='振動 '+(VIB?'ON':'OFF'); };
+let tt; function toast(m){ const t=document.getElementById('toast'); t.textContent=m; t.classList.add('on'); clearTimeout(tt); tt=setTimeout(()=>t.classList.remove('on'),1600); }
+show();
+</script>
+</body>
+</html>

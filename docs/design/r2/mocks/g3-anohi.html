@@ -1,0 +1,828 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>G3 あの日の音 — モック</title>
+<style>
+/* ============ 色と面 ============ */
+:root{
+  --paper:#F4EFE6; --card:#FBF8F2; --card2:#EFE8DB;
+  --ink:#1D1B19; --ink2:#5E574E; --past:#8C857A; --pastText:#756E63;
+  --red:#D9573B; --blue:#2F6FD6; --brass:#C9A227; --brassLight:#EFD98A; --brassDark:#8F7118;
+  --disc:#1D1B19; --discRim:#1D1B19; --groove:rgba(255,255,255,.055);
+  --sheen:.55; --line:rgba(29,27,25,.13);
+  --stopBg:#1D1B19; --stopInk:#F4EFE6;
+  --onRed:#FFF8F0; --onBlue:#FFFFFF;
+  --strip:#F1E4BC; --stripLine:rgba(143,113,24,.28);
+  --shadow:0 1px 0 rgba(29,27,25,.06), 0 6px 18px rgba(29,27,25,.08);
+  color-scheme: light;
+}
+html[data-theme="dark"]{
+  --paper:#16130F; --card:#211C17; --card2:#2A241D;
+  --ink:#EFE8DC; --ink2:#B7AEA1; --past:#9A9285; --pastText:#A8A093;
+  --red:#E56A4D; --blue:#5B90EA; --brass:#D4B04A; --brassLight:#E9CF78; --brassDark:#7E6416;
+  --disc:#0C0B0A; --discRim:#3B342B; --groove:rgba(255,255,255,.035);
+  --sheen:.18; --line:rgba(239,232,220,.12);
+  --stopBg:#2B251F; --stopInk:#F4EFE6;
+  --onRed:#FFF8F0; --onBlue:#0E1420;
+  --strip:#3A3122; --stripLine:rgba(233,207,120,.2);
+  --shadow:0 1px 0 rgba(0,0,0,.3);
+  color-scheme: dark;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--paper);color:var(--ink)}
+body{font-family:"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP","Noto Sans CJK JP",system-ui,sans-serif;
+  font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased;max-width:390px;margin:0 auto;min-height:100dvh}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.num{font-variant-numeric:tabular-nums;font-weight:700;letter-spacing:-.01em}
+.serif{font-family:"Hiragino Mincho ProN","Yu Mincho","Noto Serif JP","Noto Serif CJK JP",serif}
+.small{font-size:12px;color:var(--ink2)}
+.muted{color:var(--ink2)}
+
+/* 押すと沈むボタン */
+.press{transition:transform .12s cubic-bezier(.3,1.6,.5,1), box-shadow .12s}
+.press:active{transform:translateY(3px)}
+
+/* ============ 開発用ナビ ============ */
+#devnav{position:sticky;top:0;z-index:50;background:rgba(29,27,25,.92);color:#F4EFE6;padding:6px 8px;display:flex;flex-wrap:wrap;gap:4px;font-size:10.5px}
+#devnav a,#devnav button{color:#F4EFE6;text-decoration:none;padding:2px 6px;border-radius:6px;border:1px solid rgba(244,239,230,.25);font-size:10.5px}
+#devnav a.on{background:#D9573B;border-color:#D9573B}
+html[data-shot="1"] #devnav, html[data-chrome="0"] #devnav{display:none}
+html[data-shot="1"] body{margin:0;width:390px;min-height:844px}
+html[data-shot="1"] .screen{min-height:844px}
+html[data-shot="1"] #s-rec{height:844px;min-height:0}
+
+/* ============ 画面 ============ */
+.screen{display:none;min-height:100dvh;padding:14px 16px 18px;position:relative}
+.screen.on{display:block}
+.topline{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+.date{font-size:12px;color:var(--ink2);font-weight:600;letter-spacing:.04em}
+.phrase{font-size:20px;font-weight:800;line-height:1.3;margin-top:2px}
+.phraseSub{font-size:12.5px;color:var(--ink2);font-weight:600}
+.chipBtn{border:1.5px solid var(--line);border-radius:999px;padding:6px 12px;font-size:13px;font-weight:700;background:var(--card);white-space:nowrap}
+.note{font-size:11.5px;color:var(--ink2);text-align:center;margin-top:10px}
+
+/* ============ レコード(ホームの主役) ============ */
+.discWrap{position:relative;width:330px;height:330px;margin:10px auto 0}
+.discWrap svg{position:absolute;inset:0;width:330px;height:330px;display:block}
+.discWrap .sheen{position:absolute;inset:6px;border-radius:50%;pointer-events:none;opacity:var(--sheen);
+  background:conic-gradient(from 20deg, transparent 0 8%, rgba(255,255,255,.16) 12%, transparent 18% 50%, rgba(255,255,255,.12) 62%, transparent 68%);}
+.discWrap.spin svg .rot, .discWrap.spin .sheen{animation:spin 1.8s linear infinite}
+.discWrap svg .rot{transform-origin:165px 165px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.label{position:absolute;left:65px;top:65px;width:200px;height:200px;border-radius:50%;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+  background:var(--red);color:var(--onRed);box-shadow:inset 0 0 0 6px rgba(0,0,0,.08), 0 4px 0 rgba(0,0,0,.18);
+  transition:background .35s, transform .12s cubic-bezier(.3,1.6,.5,1)}
+.label:active{transform:translateY(4px);box-shadow:inset 0 0 0 6px rgba(0,0,0,.08), 0 0 0 rgba(0,0,0,.18)}
+.label .ico{font-size:34px;line-height:1;font-weight:800}
+.label .t1{font-size:22px;font-weight:800;line-height:1.25}
+.label .t2{font-size:14px;font-weight:700;opacity:.92}
+.label .hole{position:absolute;width:10px;height:10px;border-radius:50%;background:var(--paper);top:95px;left:95px;opacity:.0}
+.label.ready{background:var(--blue);color:var(--onBlue)}
+.label.blank{background:#FFFDF8;color:#1D1B19;box-shadow:inset 0 0 0 2px #E4DCCD, inset 0 0 0 10px #FFFDF8, inset 0 0 0 11.5px #D8CFBE, 0 4px 0 rgba(0,0,0,.18)}
+.label.blank .dot{color:#2F6FD6}
+.label .pressed{font-size:11px;font-weight:700;letter-spacing:.12em;opacity:.8}
+.escape{display:flex;justify-content:center;gap:14px;margin-top:6px}
+.linkBtn{font-size:14px;font-weight:700;color:var(--ink2);text-decoration:underline;text-underline-offset:4px;text-decoration-thickness:1.5px;padding:8px 6px}
+.hint{text-align:center;font-size:13px;color:var(--ink2);font-weight:600;margin-top:2px}
+
+.others{display:flex;gap:8px;justify-content:center;margin-top:12px}
+.miniDisc{display:inline-flex;align-items:center;gap:8px;border:1.5px solid var(--line);background:var(--card);border-radius:999px;padding:6px 14px 6px 6px;font-weight:700;font-size:13.5px}
+.miniDisc i{width:26px;height:26px;border-radius:50%;background:radial-gradient(circle, var(--c,#8C857A) 0 34%, var(--disc) 36% 100%);box-shadow:inset 0 0 0 1px var(--discRim)}
+.miniDisc small{font-weight:600;color:var(--ink2);font-size:11.5px}
+
+.detour{margin-top:14px;background:var(--card);border-radius:16px;padding:12px 14px;display:flex;gap:12px;align-items:center;box-shadow:var(--shadow);border:1px solid var(--line)}
+.detour .d{width:46px;height:46px;flex:none;border-radius:50%;background:radial-gradient(circle,#8C857A 0 30%, var(--disc) 32% 100%);box-shadow:inset 0 0 0 1px var(--discRim)}
+.detour .k{font-size:11.5px;font-weight:700;color:var(--ink2);letter-spacing:.04em}
+.detour .n{font-size:15.5px;font-weight:800}
+.detour .m{font-size:12px;color:var(--ink2);font-weight:600}
+.detour button{margin-left:auto}
+
+.bottomNav{display:flex;justify-content:space-around;margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
+.bottomNav a{font-size:12px;font-weight:700;color:var(--ink2);text-decoration:none;display:flex;flex-direction:column;align-items:center;gap:2px}
+.bottomNav a.on{color:var(--ink)}
+.bottomNav a b{font-size:17px}
+
+/* ============ 初日 / 空白明け ============ */
+.bigHead{font-size:27px;font-weight:800;text-align:center;margin-top:18px;line-height:1.35}
+.lead{text-align:center;font-size:14px;color:var(--ink2);font-weight:600;margin-top:6px;line-height:1.65}
+.promise{margin:14px auto 0;max-width:320px;text-align:center;font-size:15px;line-height:1.7;padding:10px 14px;border-top:1px dashed var(--line);border-bottom:1px dashed var(--line)}
+.measureOnly{display:flex;align-items:center;gap:10px;justify-content:center;margin-top:12px;font-size:13.5px;font-weight:700}
+.measureOnly .tag{border:1.5px solid var(--ink2);color:var(--ink2);border-radius:6px;padding:1px 8px;font-size:12px}
+
+/* ============ 録音中 ============ */
+#s-rec{padding:0;display:none;flex-direction:column;height:100dvh;min-height:760px}
+#s-rec.on{display:flex}
+.recTop{flex:1 1 50%;padding:12px 16px 0;display:flex;flex-direction:column;align-items:center}
+.recHead{width:100%;display:flex;justify-content:space-between;align-items:center}
+.recBadge{display:flex;align-items:center;gap:8px;font-weight:800;font-size:15px}
+.recBadge i{width:12px;height:12px;border-radius:50%;background:var(--red);animation:blink 1.03s ease-in-out infinite}
+@keyframes blink{50%{opacity:.25}}
+.elapsed{font-size:34px;font-weight:800}
+.recDisc{position:relative;width:292px;height:292px;margin-top:4px}
+.recDisc svg{position:absolute;inset:0;width:292px;height:292px}
+.beatFace{position:absolute;left:46px;top:46px;width:200px;height:200px;border-radius:50%;background:var(--card);display:flex;align-items:center;justify-content:center;box-shadow:inset 0 0 0 2px var(--line)}
+.beatNum{font-size:160px;line-height:1;font-weight:800;font-variant-numeric:tabular-nums;margin-top:-6px;color:var(--ink)}
+.beats{display:flex;gap:14px;margin-top:8px}
+.beats i{width:18px;height:18px;border-radius:50%;border:2.5px solid var(--ink2)}
+.beats i.on{background:var(--blue);border-color:var(--blue)}
+.level{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:12px;font-weight:700;color:var(--ink2)}
+.level .bar{width:120px;height:6px;border-radius:3px;background:var(--line);overflow:hidden}
+.level .bar b{display:block;height:100%;width:62%;background:var(--blue);border-radius:3px;transition:width .08s}
+.recRule{font-size:11.5px;color:var(--ink2);margin-top:4px;text-align:center}
+.stop{flex:1 1 50%;margin:0;width:100%;background:var(--stopBg);color:var(--stopInk);border-radius:28px 28px 0 0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px}
+.stop .sq{width:64px;height:64px;border-radius:12px;background:var(--red)}
+.stop .w{font-size:40px;font-weight:800;letter-spacing:.08em}
+.stop .s{font-size:13px;font-weight:600;opacity:.75}
+
+/* ============ 祝い(オルゴール) ============ */
+.celebHead{text-align:center;margin-top:18px}
+.celebHead h2{font-size:19px;font-weight:800}
+.legend{display:flex;justify-content:center;gap:14px;font-size:12.5px;font-weight:700;margin-top:6px;color:var(--ink2)}
+.legend i{display:inline-block;width:11px;height:11px;border-radius:50%;vertical-align:-1px;margin-right:4px}
+.box{margin:14px auto 0;width:358px;border-radius:18px;padding:10px 0;background:linear-gradient(#6B4A33,#4E3322);box-shadow:inset 0 2px 0 rgba(255,255,255,.12), 0 8px 20px rgba(29,27,25,.18)}
+html[data-theme="dark"] .box{background:linear-gradient(#3F2C1F,#2C1F16)}
+.box svg{display:block;width:358px;height:230px}
+.celebLine{text-align:center;font-size:16px;font-weight:800;margin-top:14px}
+.celebSub{text-align:center;font-size:13px;color:var(--ink2);font-weight:600;margin-top:2px}
+.celebActs{display:flex;gap:10px;margin-top:18px}
+.btn{flex:1;border-radius:16px;padding:14px 10px;font-weight:800;font-size:16px;text-align:center}
+.btn.primary{background:var(--blue);color:var(--onBlue);box-shadow:0 4px 0 rgba(0,0,0,.18)}
+.btn.primary:active{box-shadow:0 1px 0 rgba(0,0,0,.18)}
+.btn.ghost{background:var(--card);border:1.5px solid var(--line)}
+.btn.redb{background:var(--red);color:var(--onRed);box-shadow:0 4px 0 rgba(0,0,0,.18)}
+.btn.brass{background:var(--brass);color:#2A2108;box-shadow:0 4px 0 var(--brassDark)}
+
+/* ============ 診断 ============ */
+#s-diag{padding-top:10px}
+.diagHead{display:flex;justify-content:space-between;align-items:baseline}
+.diagHead .phrase{font-size:16px}
+.modes{display:flex;gap:6px;margin-top:6px}
+.modes button{font-size:12px;font-weight:700;padding:3px 10px;border-radius:999px;border:1.5px solid var(--line);color:var(--ink2)}
+.modes button.on{border-color:var(--ink);color:var(--ink)}
+.listen{margin-top:10px;display:flex;flex-direction:column;gap:8px}
+.listenMain{width:100%;border-radius:18px;background:var(--red);color:var(--onRed);padding:12px 16px;display:flex;align-items:center;gap:12px;box-shadow:0 4px 0 rgba(0,0,0,.2);text-align:left}
+.listenMain .ic{font-size:30px;font-weight:800;letter-spacing:-.12em;width:44px}
+.listenMain .a{font-size:20px;font-weight:800;line-height:1.2}
+.listenMain .b{font-size:13px;font-weight:700;opacity:.92}
+.listenMain .len{margin-left:auto;font-size:14px;font-weight:700}
+.listenSub{width:100%;border-radius:14px;background:var(--brass);color:#2A2108;padding:9px 16px;font-weight:800;font-size:15.5px;display:flex;align-items:center;gap:10px;box-shadow:0 3px 0 var(--brassDark)}
+.listenSub small{margin-left:auto;font-size:12px;font-weight:700;opacity:.85}
+.muteBanner{display:none;border:1.5px dashed var(--ink2);border-radius:14px;padding:10px 12px;font-size:13px;font-weight:700;margin-top:10px}
+html[data-mute="1"] .muteBanner{display:block}
+html[data-mute="1"] .soundOnly{display:none !important}
+.muteOnly{display:none}
+html[data-mute="1"] .muteOnly{display:block}
+.card{background:var(--card);border-radius:16px;border:1px solid var(--line);padding:10px 12px;margin-top:10px;box-shadow:var(--shadow)}
+.cardTitle{font-size:12.5px;font-weight:800;color:var(--ink2);display:flex;justify-content:space-between;align-items:center}
+.stripWrap svg{display:block;width:332px;height:170px;margin:4px auto 0}
+.stripLegend{display:flex;gap:12px;font-size:11.5px;font-weight:700;color:var(--ink2);justify-content:center;flex-wrap:wrap}
+.metric{display:grid;grid-template-columns:92px 1fr auto;align-items:center;gap:6px;padding:6px 0;border-top:1px solid var(--line)}
+.metric:first-of-type{border-top:0}
+.metric .k{font-size:13px;font-weight:800}
+.metric .v{display:flex;align-items:baseline;gap:6px}
+.metric .p{font-size:22px;color:var(--pastText);font-weight:700}
+.metric .arrow{font-size:14px;color:var(--ink2);font-weight:700}
+.metric .c{font-size:30px;color:var(--blue);font-weight:800}
+.metric .u{font-size:13px;font-weight:700;color:var(--ink2)}
+.verdict{font-size:12.5px;font-weight:800;border:1.5px solid var(--ink2);border-radius:8px;padding:2px 8px;white-space:nowrap}
+.verdict.flat{border-style:solid;color:var(--ink)}
+.band svg{display:block;width:330px;height:34px;margin:0 auto}
+.ear{margin-top:10px;text-align:center}
+.ear .q{font-size:14.5px;font-weight:800}
+.ear .row{display:flex;gap:8px;margin-top:6px}
+.ear .row button{flex:1;border:2px solid var(--line);border-radius:14px;padding:10px 6px;font-weight:800;font-size:14.5px;background:var(--card)}
+.ear .row button.on{border-color:var(--ink)}
+.diagActs{display:flex;gap:10px;margin-top:10px;align-items:center}
+.diagActs .btn{padding:14px 10px}
+.foot{font-size:11px;color:var(--ink2);text-align:center;margin-top:8px}
+
+/* ============ 手紙 ============ */
+.envelope{position:relative;margin-top:14px;height:228px;border-radius:14px;background:#FBF6EC;color:#2E2A25;box-shadow:0 10px 24px rgba(29,27,25,.14), inset 0 0 0 1px rgba(29,27,25,.08);overflow:hidden}
+html[data-theme="dark"] .envelope{background:#E9E0CF;box-shadow:0 10px 24px rgba(0,0,0,.4)}
+.envelope .flap{position:absolute;left:0;right:0;top:0;height:120px}
+.envelope .flap svg{width:100%;height:120px;display:block}
+.seal{position:absolute;left:50%;top:92px;width:54px;height:54px;margin-left:-27px;border-radius:50%;background:radial-gradient(circle at 40% 35%,#E77A5F,#C2442B 60%,#A43722);color:#FFE9DF;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:800;box-shadow:0 2px 0 rgba(0,0,0,.2)}
+.stamp{position:absolute;right:14px;top:12px;width:62px;height:74px;background:#fff;padding:4px;border-radius:2px;
+  box-shadow:0 0 0 1px rgba(0,0,0,.08);background-image:radial-gradient(circle at 50% 50%, #F4EFE6 0 0);
+  -webkit-mask:radial-gradient(circle 3px at 3px 3px,#0000 98%,#000) -3px -3px/7px 7px}
+.stamp .in{width:100%;height:100%;background:#2F6FD6;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:8.5px;font-weight:800;text-align:center;line-height:1.2}
+.stamp .in i{width:26px;height:26px;border-radius:50%;background:radial-gradient(circle,#D9573B 0 30%,#1D1B19 32%);margin-bottom:3px}
+.postmark{position:absolute;right:52px;top:40px;width:78px;height:78px;border-radius:50%;border:2px solid rgba(60,90,153,.75);color:rgba(60,90,153,.9);display:flex;flex-direction:column;align-items:center;justify-content:center;transform:rotate(-12deg);font-weight:800;line-height:1.1}
+.postmark .d{font-size:17px;font-variant-numeric:tabular-nums}
+.postmark .t{font-size:12px;font-variant-numeric:tabular-nums}
+.postmark .s{font-size:8px;letter-spacing:.1em}
+.envText{position:absolute;left:18px;bottom:16px;right:18px}
+.envText .from{font-size:23px;font-weight:800;line-height:1.3}
+.envText .sub{font-size:12.5px;font-weight:700;color:#5E574E}
+.envKicker{font-size:13px;font-weight:800;color:var(--ink2);margin-top:14px;display:flex;align-items:center;gap:8px}
+.envKicker i{width:8px;height:8px;border-radius:50%;background:var(--red)}
+.slideIn{animation:slide .5s cubic-bezier(.2,1.3,.4,1) both}
+@keyframes slide{from{transform:translateY(-40px) rotate(-3deg);opacity:0}}
+html[data-anim="0"] .slideIn{animation:none}
+.todayMini{margin-top:14px;display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:10px 12px}
+.todayMini .d{width:58px;height:58px;border-radius:50%;flex:none;background:radial-gradient(circle,var(--red) 0 34%, var(--disc) 36%);box-shadow:inset 0 0 0 1px var(--discRim)}
+
+.letter{margin-top:12px;background:#FBF6EC;color:#2E2A25;border-radius:6px;padding:16px 16px 14px;box-shadow:0 8px 20px rgba(29,27,25,.12);position:relative;
+  background-image:repeating-linear-gradient(transparent 0 31px, rgba(60,90,153,.14) 31px 32px)}
+html[data-theme="dark"] .letter{background-color:#E9E0CF}
+.letter .body{font-size:19px;line-height:32px}
+.letter .waveRow{display:flex;align-items:center;gap:10px;margin-top:6px}
+.letter .waveRow button{width:48px;height:48px;border-radius:50%;background:#1D1B19;color:#F4EFE6;font-size:18px;font-weight:800;flex:none}
+.letter svg{display:block}
+.pair{display:grid;grid-template-columns:1fr 28px 1fr;align-items:center;margin-top:8px}
+.pair .col{text-align:center}
+.pair .dd{width:64px;height:64px;border-radius:50%;margin:0 auto 4px;box-shadow:inset 0 0 0 1px var(--discRim)}
+.pair .when{font-size:12.5px;font-weight:800;color:var(--ink2)}
+.pair .ms{font-size:34px;font-weight:800;line-height:1.1}
+.pair .ms small{font-size:14px;color:var(--ink2);font-weight:700}
+.pair .bpm{font-size:15px;font-weight:800;margin-top:2px}
+.pair .mid{text-align:center;font-weight:800;color:var(--ink2);font-size:18px}
+.dirNote{margin-top:10px;font-size:13.5px;line-height:1.65;font-weight:600;background:var(--card2);border-radius:12px;padding:8px 12px}
+
+/* ============ レコード棚 ============ */
+.seg{display:flex;background:var(--card2);border-radius:12px;padding:3px;margin-top:8px}
+.seg button{flex:1;padding:8px 0;border-radius:9px;font-weight:800;font-size:13.5px;color:var(--ink2)}
+.seg button.on{background:var(--card);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.15)}
+.shelfRow{margin-top:12px}
+.shelfRow .nm{font-size:14px;font-weight:800;display:flex;justify-content:space-between;align-items:baseline}
+.shelfRow .nm small{font-size:11.5px;color:var(--ink2);font-weight:700}
+.shelfRow svg{display:block;width:358px;height:78px;margin-top:2px}
+.plank{height:8px;border-radius:3px;background:linear-gradient(#C9A27A,#A67C52);margin-top:-6px;box-shadow:0 3px 0 rgba(0,0,0,.12)}
+html[data-theme="dark"] .plank{background:linear-gradient(#5A4632,#3D2F22)}
+.resolvedGrid{display:flex;gap:10px;margin-top:8px}
+.resolvedGrid .r{flex:1;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px;display:flex;gap:10px;align-items:center}
+.resolvedGrid .r i{width:44px;height:44px;border-radius:50%;flex:none;background:radial-gradient(circle,var(--brass) 0 32%, var(--disc) 34%);box-shadow:inset 0 0 0 1px var(--discRim)}
+.resolvedGrid .r b{font-size:13px;display:block;line-height:1.3}
+.resolvedGrid .r span{font-size:11.5px;color:var(--ink2);font-weight:600}
+h3.sec{font-size:13px;font-weight:800;color:var(--ink2);margin-top:14px;letter-spacing:.04em}
+
+@media (prefers-reduced-motion: reduce){
+  .discWrap.spin svg .rot,.discWrap.spin .sheen,.recBadge i{animation:none}
+  .slideIn{animation:fade .3s both}
+  @keyframes fade{from{opacity:0}}
+}
+</style>
+</head>
+<body>
+<nav id="devnav" aria-label="画面切替(モック用)"></nav>
+
+<!-- ============ #home ============ -->
+<section class="screen" id="s-home" aria-label="ホーム">
+  <div class="topline">
+    <div>
+      <div class="date">9/30 水 · 今日の一本</div>
+      <div class="phrase">16分のオルタネイト</div>
+      <div class="phraseSub">Am ペンタ 5〜8f · ♩=58 · 16分</div>
+    </div>
+    <button class="chipBtn press">フレーズ ▾</button>
+  </div>
+  <div class="discWrap" id="homeDisc">
+    <svg viewBox="0 0 330 330" aria-hidden="true" data-disc="yesterday"></svg>
+    <div class="sheen"></div>
+    <button class="label press" id="homeLabel" aria-label="昨日の音を聴く。9月29日、8秒"></button>
+  </div>
+  <p class="hint" id="homeHint">聴き終えたら、同じボタンでそのまま弾けます</p>
+  <div class="escape"><button class="linkBtn" onclick="go('rec')">聴かずに弾く</button></div>
+  <div class="others soundOnly">
+    <button class="miniDisc press" style="--c:#8C857A"><i></i><span>1 週間前の音<br><small>9/23</small></span></button>
+    <button class="miniDisc press" style="--c:#C9A227"><i></i><span>お手本の音<br><small>講師 · ♩=58</small></span></button>
+  </div>
+  <div class="detour">
+    <div class="d" aria-hidden="true"></div>
+    <div>
+      <div class="k">今日の寄り道 · しばらくぶり</div>
+      <div class="n">F→B♭ の押さえ替え</div>
+      <div class="m">1 分 · 飛ばせます</div>
+    </div>
+    <button class="chipBtn press">寄り道 ›</button>
+  </div>
+  <div class="bottomNav">
+    <a href="#home" class="on"><b>◉</b>今日</a><a href="#extra2"><b>▤</b>レコード棚</a><a href="#home"><b>⚙</b>設定</a>
+  </div>
+  <p class="note">数字は一貫性の目安です。正しさの点数ではありません。</p>
+</section>
+
+<!-- ============ #home-day1 ============ -->
+<section class="screen" id="s-home-day1" aria-label="初日のホーム">
+  <div class="topline">
+    <div>
+      <div class="date">9/30 水 · はじめての日</div>
+      <div class="phrase">16分のオルタネイト</div>
+      <div class="phraseSub">Am ペンタ 5〜8f · ♩=58 · 16分</div>
+    </div>
+    <button class="chipBtn press">設定 ▾</button>
+  </div>
+  <div class="bigHead">最初の 1 枚を<br>プレスします</div>
+  <div class="discWrap" style="margin-top:8px">
+    <svg viewBox="0 0 330 330" aria-hidden="true" data-disc="blank"></svg>
+    <div class="sheen"></div>
+    <button class="label blank press" onclick="go('rec')" aria-label="録音して最初の1枚をプレスする">
+      <span class="pressed">WHITE LABEL</span>
+      <span class="ico dot">●</span>
+      <span class="t1">弾いて<br>プレスする</span>
+      <span class="t2" style="opacity:.6">日付はまだ空白</span>
+    </button>
+  </div>
+  <p class="lead">録ると、このレーベルに今日の日付が刻まれます。<br>録り終えると、弾いたフレーズが<br>オルゴールになって返ってきます。</p>
+  <p class="promise serif">この 1 本は、いつかあなたに届きます。</p>
+  <div class="others soundOnly" style="margin-top:14px">
+    <button class="miniDisc press" style="--c:#C9A227"><i></i><span>お手本を先に入れる<br><small>講師の録音 / 楽譜</small></span></button>
+  </div>
+  <p class="note">数字は一貫性の目安です。正しさの点数ではありません。</p>
+</section>
+
+<!-- ============ #home-gap ============ -->
+<section class="screen" id="s-home-gap" aria-label="空白明けのホーム">
+  <div class="topline">
+    <div>
+      <div class="date">9/30 水</div>
+      <div class="phrase">16分のオルタネイト</div>
+      <div class="phraseSub">Am ペンタ 5〜8f · ♩=58 · 16分</div>
+    </div>
+    <button class="chipBtn press">フレーズ ▾</button>
+  </div>
+  <div class="bigHead serif" style="font-size:32px;margin-top:16px">おかえりなさい</div>
+  <div class="discWrap" id="gapDisc" style="margin-top:4px">
+    <svg viewBox="0 0 330 330" aria-hidden="true" data-disc="last"></svg>
+    <div class="sheen"></div>
+    <button class="label press" id="gapLabel" aria-label="この前の自分の音を聴く。8秒"></button>
+  </div>
+  <p class="hint">この前のあなたの音から。聴いたらそのまま弾けます</p>
+  <div class="escape"><button class="linkBtn" onclick="go('rec')">聴かずに弾く</button></div>
+  <div class="measureOnly"><span class="tag">測るだけ</span>今日の 1 本目は比べません。比べるのは 2 本目から。</div>
+  <div class="bottomNav" style="margin-top:22px">
+    <a href="#home-gap" class="on"><b>◉</b>今日</a><a href="#extra2"><b>▤</b>レコード棚</a><a href="#home-gap"><b>⚙</b>設定</a>
+  </div>
+  <p class="note">数字は一貫性の目安です。正しさの点数ではありません。</p>
+</section>
+
+<!-- ============ #rec ============ -->
+<section class="screen" id="s-rec" aria-label="録音中">
+  <div class="recTop">
+    <div class="recHead">
+      <div class="recBadge"><i></i>録音中 <span class="muted" style="font-weight:700;font-size:13px">♩=58</span></div>
+      <div class="elapsed num" id="elapsed" aria-label="経過 6 秒">0:06</div>
+    </div>
+    <div class="recDisc">
+      <svg viewBox="0 0 292 292" aria-hidden="true" data-disc="rec"></svg>
+      <div class="beatFace"><span class="beatNum" id="beatNum" aria-live="off">3</span></div>
+    </div>
+    <div class="beats" id="beats" aria-hidden="true"><i class="on"></i><i class="on"></i><i class="on"></i><i></i></div>
+    <div class="level">録れています <span class="bar"><b id="lvl"></b></span></div>
+    <p class="recRule">録音中は、過去の音も効果音も鳴らしません</p>
+  </div>
+  <button class="stop" onclick="go('celebrate')" aria-label="録音を止める">
+    <span class="sq"></span><span class="w">止める</span><span class="s">画面の下半分どこでも</span>
+  </button>
+</section>
+
+<!-- ============ #celebrate ============ -->
+<section class="screen" id="s-celebrate" aria-label="オルゴールで重ねて鳴らしている途中">
+  <div class="celebHead">
+    <div class="date">16分のオルタネイト · 今日の 1 本</div>
+    <h2 class="soundOnly">前回と今回を、重ねて鳴らしています</h2>
+    <h2 class="muteOnly">前回と今回を、重ねて回しています</h2>
+    <div class="legend"><span><i style="background:var(--past)"></i>前回 9/29</span><span><i style="background:var(--blue)"></i>今回</span><span><i style="background:var(--brassLight);box-shadow:0 0 6px var(--brass)"></i>揃って鳴った歯</span></div>
+  </div>
+  <div class="box"><svg id="cyl" viewBox="0 0 358 230" role="img" aria-label="オルゴールのシリンダー。前回と今回の点がほぼ重なって回っている"></svg></div>
+  <p class="celebLine">揃った音は、1 つの音に溶けて鳴ります</p>
+  <p class="celebSub">ずれた音だけ「ぽろん」と 2 つに割れます</p>
+  <div class="celebActs">
+    <button class="btn ghost press soundOnly" onclick="playOrgel()">♪ もう一度</button>
+    <button class="btn primary press" onclick="go('diag')">数字も見る ›</button>
+  </div>
+  <p class="note">数字は一貫性の目安です。正しさの点数ではありません。</p>
+</section>
+
+<!-- ============ #diag ============ -->
+<section class="screen" id="s-diag" aria-label="診断結果">
+  <div class="diagHead">
+    <div class="phrase">16分のオルタネイト</div><div class="date">9/30 · 今日の 1 本</div>
+  </div>
+  <div class="modes" role="group" aria-label="比べる相手"><button class="on">直前(9/29)</button><button>最も安定</button><button>お手本</button></div>
+  <div class="listen soundOnly">
+    <button class="listenMain press" onclick="playSideBySide()">
+      <span class="ic">▶▶</span><span><span class="a">並べて聴く</span><br><span class="b">昨日 → 今日</span></span><span class="len num">16 秒</span>
+    </button>
+    <button class="listenSub press" onclick="playOrgel()">♪ 重ねて鳴らす <small>オルゴール · 4 秒</small></button>
+  </div>
+  <div class="muteBanner">音なしモード — 点の重なりで見ています。<br><span style="font-weight:600;color:var(--ink2)">音を出せるときに、ここから並べて聴けます。</span></div>
+  <div class="card stripWrap">
+    <div class="cardTitle"><span>シリンダーを開いた図 · 26 音</span><span style="font-weight:700">灰 前回 / 青 今回</span></div>
+    <svg id="strip" viewBox="0 0 332 170" role="img" aria-label="26音のうち25音は前回と重なり、7音目だけが62ミリ秒遅れて2つに割れている"></svg>
+    <div class="stripLegend"><span>● 1 つに見える = 前回と同じタイミング</span><span>◐ 割れた = ずれた音</span></div>
+  </div>
+  <div class="card">
+    <div class="metric">
+      <span class="k">ばらつき</span>
+      <span class="v" aria-label="ばらつき 前回14ミリ秒、今回13ミリ秒"><span class="p num">14</span><span class="arrow">→</span><span class="c num">13</span><span class="u">ms</span></span>
+      <span class="verdict flat">横ばい</span>
+    </div>
+    <div class="band"><svg id="band" viewBox="0 0 330 34" role="img" aria-label="横ばいの帯 8から20ミリ秒の中に今回の13がある"></svg></div>
+    <div class="metric">
+      <span class="k">音符一致率</span>
+      <span class="v" aria-label="一致率 前回83%、今回92%"><span class="p num">83</span><span class="arrow">→</span><span class="c num">92</span><span class="u">%</span></span>
+      <span class="verdict">前回より高い</span>
+    </div>
+    <div class="metric">
+      <span class="k">弾き忘れ+余分</span>
+      <span class="v" aria-label="弾き忘れと余分 前回6個、今回2個"><span class="p num">6</span><span class="arrow">→</span><span class="c num">2</span><span class="u">個</span></span>
+      <span class="verdict">前回より少ない</span>
+    </div>
+  </div>
+  <div class="ear soundOnly">
+    <div class="q">耳ではどうでしたか</div>
+    <div class="row"><button class="press" onclick="this.classList.add('on');this.nextElementSibling.classList.remove('on')">違って聞こえた</button><button class="press" onclick="this.classList.add('on');this.previousElementSibling.classList.remove('on')">同じに聞こえた</button></div>
+  </div>
+  <div class="diagActs">
+    <button class="btn primary press" onclick="go('rec')">● もう 1 本</button>
+    <button class="btn ghost press" onclick="go('home')">今日はここまで</button>
+  </div>
+  <p class="foot">数字は一貫性の目安です。帯(±6ms)の中の差には色も矢印も付けません。</p>
+</section>
+
+<!-- ============ #extra 手紙の日 ============ -->
+<section class="screen" id="s-extra" aria-label="手紙の日のホーム">
+  <div class="topline">
+    <div><div class="date">9/30 水</div></div>
+    <button class="chipBtn press">文箱</button>
+  </div>
+  <div class="envKicker"><i></i>便りが届いています</div>
+  <div class="envelope slideIn">
+    <div class="flap"><svg viewBox="0 0 358 120" preserveAspectRatio="none" aria-hidden="true"><path d="M0 0 L179 112 L358 0 Z" fill="#F1E9DA" stroke="rgba(29,27,25,.12)"/></svg></div>
+    <div class="seal" aria-hidden="true">♪</div>
+    <div class="stamp" aria-hidden="true"><div class="in"><i></i>G→C→D→G<br>ストローク</div></div>
+    <div class="postmark" aria-label="消印 9月8日 21時14分"><span class="s">POSTMARK</span><span class="d">9.08</span><span class="t">21:14</span></div>
+    <div class="envText">
+      <div class="from">22 日前のあなたから</div>
+      <div class="sub">切手: G→C→D→G のストローク · 消印 9.08 21:14</div>
+    </div>
+  </div>
+  <button class="btn redb press" style="width:100%;margin-top:14px;font-size:18px;padding:16px" onclick="go('extra-open')">▶ 封を開けて聴く <span style="font-weight:700;font-size:14px">· 12 秒</span></button>
+  <p class="hint" style="margin-top:6px">あとで開けてもかまいません。文箱に残ります。</p>
+  <div class="todayMini">
+    <div class="d" aria-hidden="true"></div>
+    <div><div class="small" style="font-weight:700">今日の一本</div><div style="font-weight:800">16分のオルタネイト</div><div class="small">▶ 昨日の音 9/29 · 8 秒</div></div>
+    <button class="chipBtn press" style="margin-left:auto" onclick="go('home')">開く ›</button>
+  </div>
+  <p class="note">数字は一貫性の目安です。正しさの点数ではありません。</p>
+</section>
+
+<!-- ============ #extra-open 手紙を開けて並べたあと ============ -->
+<section class="screen" id="s-extra-open" aria-label="手紙を開けて今日の1本と並べたあと">
+  <div class="topline">
+    <div><div class="date">9/30 水 · 便り</div><div class="phrase" style="font-size:17px">G→C→D→G のストローク</div></div>
+    <button class="chipBtn press">文箱にしまう</button>
+  </div>
+  <div class="letter serif">
+    <p class="body">9 月 8 日の 21:14、<br>あなたはこう弾いていました。</p>
+    <div class="waveRow"><button class="press" onclick="playPluckSeq(8,.9)" aria-label="22日前の音を聴く">▶</button><svg id="letterWave" width="270" height="44" viewBox="0 0 270 44" aria-hidden="true"></svg></div>
+  </div>
+  <div class="card">
+    <div class="cardTitle"><span>今日の 1 本を録って、並べました</span></div>
+    <div class="pair">
+      <div class="col"><div class="dd" style="background:radial-gradient(circle,#8C857A 0 32%, var(--disc) 34%)"></div><div class="when">9/08 21:14</div><div class="ms num" style="color:var(--pastText)">24<small> ms</small></div><div class="bpm num">♩=72</div></div>
+      <div class="mid">→</div>
+      <div class="col"><div class="dd" style="background:radial-gradient(circle,var(--blue) 0 32%, var(--disc) 34%)"></div><div class="when">今日 9/30</div><div class="ms num" style="color:var(--blue)">15<small> ms</small></div><div class="bpm num">♩=80</div></div>
+    </div>
+    <p class="dirNote">ばらつきは <b>小さい方へ</b>動いています(24 → 15ms)。<br>テンポが違う(♩=72 と ♩=80)ので、判定はしません。</p>
+    <button class="btn redb press soundOnly" style="width:100%;margin-top:10px" onclick="playSideBySide()">▶▶ 並べて聴く <span style="font-size:13px;font-weight:700">9/08 → 今日</span></button>
+    <p class="small" style="margin-top:8px;text-align:center">直前の 1 本(9/28)とは: 横ばい</p>
+  </div>
+  <div class="diagActs">
+    <button class="btn primary press" onclick="go('rec')">● もう 1 本</button>
+    <button class="btn ghost press" onclick="go('home')">今日の一本へ</button>
+  </div>
+  <p class="note">数字は一貫性の目安です。長い間隔の比較は、向きだけを書きます。</p>
+</section>
+
+<!-- ============ #extra2 レコード棚 ============ -->
+<section class="screen" id="s-extra2" aria-label="レコード棚(1か月後)">
+  <div class="topline">
+    <div><div class="date">1 か月後</div><div class="phrase">レコード棚</div></div>
+    <button class="chipBtn press">並べ替え ▾</button>
+  </div>
+  <h3 class="sec">今日の 1 本と並べる相手</h3>
+  <div class="seg" role="radiogroup" aria-label="並べる相手">
+    <button role="radio" aria-checked="false">昨日</button><button role="radio" aria-checked="false">7 日前</button><button role="radio" aria-checked="true" class="on">30 日前</button><button role="radio" aria-checked="false">初日</button>
+  </div>
+  <div id="shelves"></div>
+  <div class="card" style="margin-top:12px">
+    <div class="cardTitle"><span>30 日前の盤 · 16分のオルタネイト</span><span class="num">9/30 ♩=58</span></div>
+    <div style="display:flex;align-items:center;gap:10px;margin-top:6px">
+      <button class="btn redb press soundOnly" style="flex:none;padding:10px 14px;font-size:15px" onclick="playSideBySide()">▶▶ 並べて聴く</button>
+      <div style="font-size:13px;font-weight:700;line-height:1.5">30 日前 13ms ♩=58 → 最新 11ms ♩=63<br><span class="muted" style="font-weight:600">小さい方へ · テンポ違いのため判定なし</span></div>
+    </div>
+  </div>
+  <h3 class="sec">解決済みの盤 <span style="font-weight:600">— ときどき寄り道で回ってきます</span></h3>
+  <div class="resolvedGrid">
+    <div class="r"><i></i><div><b>開放弦の 16 分(基礎)</b><span>解決 8/30 · 11ms</span></div></div>
+    <div class="r"><i></i><div><b>Am ペンタ 下降</b><span>解決 9/10 · 15ms</span></div></div>
+  </div>
+  <p class="note">盤の数は数えません。聴きたい日の 1 枚を抜き出すための棚です。</p>
+</section>
+
+<script>
+/* ============ パラメータ ============ */
+const Q = new URLSearchParams(location.search);
+const ANIM = Q.get('anim') !== '0';
+const SHOT = Q.get('shot') === '1';
+const MUTE = Q.get('mute') === '1';
+const THEME = Q.get('theme') === 'dark' ? 'dark' : 'light';
+const H = document.documentElement;
+H.dataset.theme = THEME; H.dataset.anim = ANIM ? '1' : '0'; H.dataset.mute = MUTE ? '1' : '0';
+if (SHOT) H.dataset.shot = '1';
+if (Q.get('chrome') === '0') H.dataset.chrome = '0';
+
+const SCREENS = ['home','home-day1','home-gap','rec','celebrate','diag','extra','extra-open','extra2'];
+const NAMES = {home:'home','home-day1':'day1','home-gap':'gap',rec:'rec',celebrate:'celebrate',diag:'diag',extra:'手紙',"extra-open":'手紙を開けた',extra2:'棚'};
+
+/* ============ 決定的な疑似乱数 ============ */
+function rng(seed){ let s = seed >>> 0; return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; }; }
+const css = n => getComputedStyle(H).getPropertyValue(n).trim();
+
+/* 8 秒の 16 分音符(♩=58 → 259ms)の波形の包絡 */
+function wave(n, seed, gain=1){
+  const r = rng(seed), out = [];
+  for (let i=0;i<n;i++){
+    const t = i/n*8000, ph = (t % 259)/259;
+    const accent = (Math.floor(t/259) % 4 === 0) ? 1 : .78;
+    let a = Math.exp(-ph*4.2) * accent * (.62 + .38*r()) * gain;
+    out.push(Math.min(1, .08 + a*.92));
+  }
+  return out;
+}
+
+/* ============ レコードの SVG ============ */
+function discSVG(svg, kind){
+  const S = kind === 'rec' ? 292 : 330, c = S/2, R = c - 4;
+  const labelR = 100, r0 = labelR + 5, rmax = R - 8;
+  const disc = css('--disc'), rim = css('--discRim'), groove = css('--groove');
+  let g = `<circle cx="${c}" cy="${c}" r="${R}" fill="${disc}" stroke="${rim}" stroke-width="1.5"/>`;
+  g += `<g class="rot">`;
+  for (let r = r0+2; r < R-2; r += 3.2) g += `<circle cx="${c}" cy="${c}" r="${r.toFixed(1)}" fill="none" stroke="${groove}" stroke-width="1"/>`;
+  if (kind !== 'blank'){
+    const N = 150, w = wave(N, kind==='last' ? 918 : kind==='rec' ? 929 : 929, kind==='last' ? .86 : 1);
+    for (let i=0;i<N;i++){
+      const a = -Math.PI/2 + i/N*Math.PI*2, len = w[i]*(rmax-r0);
+      const x1 = c + Math.cos(a)*r0, y1 = c + Math.sin(a)*r0, x2 = c + Math.cos(a)*(r0+len), y2 = c + Math.sin(a)*(r0+len);
+      g += `<line data-i="${i}" x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="${kind==='rec' ? '#6E685F' : '#A39B8E'}" stroke-opacity="${kind==='rec'?'.55':'.95'}" stroke-width="2.3" stroke-linecap="round"/>`;
+    }
+  }
+  g += `</g>`;
+  if (kind === 'blank'){ g += `<circle cx="${c}" cy="${c}" r="${R-10}" fill="none" stroke="rgba(255,255,255,.08)" stroke-width="1" stroke-dasharray="2 5"/>`; }
+  svg.innerHTML = g;
+}
+function lightRing(svg, frac){
+  svg.querySelectorAll('line').forEach(l => {
+    const i = +l.dataset.i; l.setAttribute('stroke', i/150 <= frac ? '#F4EFE6' : '#A39B8E');
+  });
+}
+
+/* ============ ホームの丸いボタン ============ */
+function setLabel(el, state, opts){
+  el.classList.toggle('ready', state === 'ready');
+  if (state === 'ready'){
+    el.innerHTML = `<span class="ico">●</span><span class="t1">じゃあ弾く</span><span class="t2">カウント 4 · ♩=58</span>`;
+    el.setAttribute('aria-label','じゃあ弾く。録音を始める');
+  } else if (state === 'playing'){
+    el.innerHTML = `<span class="ico">❚❚</span><span class="t1">${opts.title}</span><span class="t2">${opts.sub}</span>`;
+  } else {
+    el.innerHTML = `<span class="ico">▶</span><span class="t1">${opts.title}</span><span class="t2">${opts.sub}</span>`;
+  }
+  el.dataset.state = state;
+}
+function wireListen(labelId, discId, opts){
+  const el = document.getElementById(labelId), wrap = document.getElementById(discId), svg = wrap.querySelector('svg');
+  const reset = () => { if (MUTE){ setLabel(el,'ready'); } else setLabel(el,'idle',opts); lightRing(svg,-1); wrap.classList.remove('spin'); };
+  el._reset = reset;
+  el.onclick = () => {
+    if (el.dataset.state === 'ready'){ go('rec'); return; }
+    if (el.dataset.state === 'playing') return;
+    setLabel(el,'playing',opts); wrap.classList.add('spin');
+    playPluckSeq(2, 1);
+    const t0 = performance.now(), D = 2000;
+    const step = now => {
+      const f = Math.min(1,(now-t0)/D); lightRing(svg,f);
+      if (f < 1) requestAnimationFrame(step);
+      else { wrap.classList.remove('spin'); setLabel(el,'ready'); if (labelId==='homeLabel') document.getElementById('homeHint').textContent = '耳が覚えているうちに、どうぞ'; }
+    };
+    requestAnimationFrame(step);
+  };
+}
+
+/* ============ 録音中 ============ */
+let recTimer = null;
+function startRec(){
+  stopRec();
+  const bn = document.getElementById('beatNum'), el = document.getElementById('elapsed'), dots = [...document.querySelectorAll('#beats i')], lvl = document.getElementById('lvl');
+  const setBeat = b => { bn.textContent = b; dots.forEach((d,i)=>d.classList.toggle('on', i < b)); };
+  if (!ANIM){ setBeat(3); el.textContent = '0:06'; lvl.style.width = '62%'; return; }
+  const t0 = performance.now(), beatMs = 60000/58; const r = rng(7);
+  const tick = () => {
+    const t = performance.now() - t0; const b = Math.floor(t/beatMs) % 4 + 1;
+    setBeat(b); el.textContent = '0:' + String(Math.floor(t/1000) % 60).padStart(2,'0');
+    lvl.style.width = (35 + r()*55).toFixed(0) + '%';
+    recTimer = requestAnimationFrame(tick);
+  };
+  tick();
+}
+function stopRec(){ if (recTimer) cancelAnimationFrame(recTimer); recTimer = null; }
+
+/* ============ 26 音のダミー(全案共通の種) ============ */
+const PAT = [0,1,2,3,4,3,2,1];               // 0=A 1=C 2=D 3=E 4=G(Am ペンタ 5〜8f)
+const NOTES = (() => { const r = rng(20260930), a = [];
+  for (let i=0;i<26;i++){ let dev = (r()*2-1)*10; if (i===6) dev = 62; a.push({i, p:PAT[i%8], dev, extra:i===17, miss:i===21}); }
+  return a; })();
+
+/* ============ オルゴール(祝いの途中) ============ */
+let cylRaf = null;
+function drawCyl(rot, lit){
+  const svg = document.getElementById('cyl');
+  const cx = 150, R = 124, top = 16, bot = 214, combTheta = 60;
+  const laneY = k => 188 - k*37;
+  const past = css('--past'), blue = css('--blue');
+  let s = `<defs>
+    <linearGradient id="brass" x1="0" x2="1"><stop offset="0" stop-color="#6E5412"/><stop offset=".22" stop-color="#C9A227"/><stop offset=".5" stop-color="#F2DC8E"/><stop offset=".78" stop-color="#C9A227"/><stop offset="1" stop-color="#6E5412"/></linearGradient>
+    <linearGradient id="plate" x1="0" x2="1"><stop offset="0" stop-color="#B8B2A6"/><stop offset=".5" stop-color="#E9E4DA"/><stop offset="1" stop-color="#9C958A"/></linearGradient>
+    <filter id="glow" x="-50%" y="-200%" width="200%" height="500%"><feGaussianBlur stdDeviation="3.2"/></filter>
+  </defs>`;
+  s += `<rect x="${cx-R}" y="${top}" width="${R*2}" height="${bot-top}" rx="16" fill="url(#brass)"/>`;
+  // 経線(回っている手がかり)
+  for (let k=-6;k<=6;k++){ const th = k*14 + (rot % 14); if (th<-88||th>88) continue; const x = cx + R*Math.sin(th*Math.PI/180);
+    s += `<line x1="${x.toFixed(1)}" y1="${top+3}" x2="${x.toFixed(1)}" y2="${bot-3}" stroke="rgba(90,66,10,.18)" stroke-width="1"/>`; }
+  // 点(前回=灰、今回=青)
+  const thetaOf = (i, devMs) => rot - i*24 - (devMs/259)*24*1.4;
+  const pins = [];
+  NOTES.forEach(n => {
+    const thP = thetaOf(n.i, 0), thT = thetaOf(n.i, n.dev);
+    const y = laneY(n.p);
+    const put = (th, color, kind) => { if (th < -86 || th > 86) return; const x = cx + R*Math.sin(th*Math.PI/180), sc = .45 + .55*Math.cos(th*Math.PI/180);
+      pins.push({x, y, r: 7.5*sc, color, kind}); };
+    if (!n.extra) put(thP, past, 'past');
+    if (!n.miss) put(thT, blue, 'today');
+  });
+  pins.filter(p=>p.kind==='past').forEach(p => s += `<circle cx="${p.x.toFixed(1)}" cy="${p.y}" r="${(p.r+2).toFixed(1)}" fill="${p.color}"/>`);
+  pins.filter(p=>p.kind==='today').forEach(p => s += `<circle cx="${p.x.toFixed(1)}" cy="${p.y}" r="${p.r.toFixed(1)}" fill="${p.color}" stroke="#F4EFE6" stroke-width="1"/>`);
+  // 櫛(右から伸びる 5 本の歯)
+  const combX = cx + R*Math.sin(combTheta*Math.PI/180);
+  s += `<rect x="318" y="${top-6}" width="34" height="${bot-top+12}" rx="6" fill="url(#plate)"/>`;
+  for (let k=0;k<5;k++){
+    const y = laneY(k), L = lit[k] || 0;
+    if (L > 0) s += `<rect x="${combX-6}" y="${y-9}" width="${324-combX+12}" height="18" rx="9" fill="#FFE68A" opacity="${(L*.9).toFixed(2)}" filter="url(#glow)"/>`;
+    s += `<rect x="${combX-2}" y="${y-5}" width="${322-combX}" height="10" rx="3" fill="${L>0 ? '#FFF1B8' : '#D8D2C6'}" stroke="rgba(0,0,0,.25)" stroke-width=".8"/>`;
+  }
+  // 7 音目の注記(割れた音)
+  const n7 = NOTES[6], thA = thetaOf(6,0), thB = thetaOf(6,n7.dev);
+  if (thA > -60 && thA < combTheta){
+    const x = cx + R*Math.sin(((thA+thB)/2)*Math.PI/180), y = laneY(n7.p);
+    s += `<g><line x1="${x}" y1="${y-14}" x2="${x}" y2="${y-26}" stroke="#2A2108" stroke-width="1.2"/>
+      <rect x="${x-44}" y="${y-48}" width="88" height="22" rx="11" fill="#FBF8F2" stroke="#2A2108" stroke-width="1"/>
+      <text x="${x}" y="${y-32.5}" text-anchor="middle" font-size="12" font-weight="800" fill="#1D1B19">7 音目 ぽろん</text></g>`;
+  }
+  svg.innerHTML = s;
+}
+function freezeCyl(){ drawCyl(182, {3:1, 4:.35, 2:.12}); }
+function runCyl(){
+  cancelAnimationFrame(cylRaf);
+  if (!ANIM){ freezeCyl(); return; }
+  const t0 = performance.now(), D = 5200, rStart = 40, rEnd = 182; const lit = {}; let last = -1;
+  const step = now => {
+    const f = Math.min(1, (now - t0)/D), rot = rStart + (rEnd - rStart) * (1 - Math.pow(1-f, 1.6));
+    for (const k in lit) lit[k] *= .93;
+    NOTES.forEach(n => { const th = rot - n.i*24; if (th >= 60 && n.i > last){ last = n.i; if (!n.miss || !n.extra) lit[n.p] = 1; } });
+    drawCyl(rot, lit);
+    if (f < 1) cylRaf = requestAnimationFrame(step); else freezeCyl();
+  };
+  cylRaf = requestAnimationFrame(step);
+}
+
+/* ============ シリンダーを開いた図(診断) ============ */
+function drawStrip(){
+  const svg = document.getElementById('strip');
+  const past = css('--past'), blue = css('--blue'), strip = css('--strip'), sl = css('--stripLine'), ink = css('--ink'), ink2 = css('--ink2'), card = css('--card');
+  const x0 = 16, dx = 12.0, laneY = k => 150 - k*20, sc = .16; // 0.16px/ms(7 音目は約 10px)
+  let s = `<rect x="4" y="62" width="324" height="104" rx="8" fill="${strip}"/>`;
+  for (let k=0;k<5;k++) s += `<line x1="8" x2="324" y1="${laneY(k)}" y2="${laneY(k)}" stroke="${sl}" stroke-width="1"/>`;
+  for (let b=0;b<=26;b+=4){ const x = x0 + b*dx - dx/2; s += `<line x1="${x}" x2="${x}" y1="66" y2="162" stroke="${sl}" stroke-width="${b%8===0?1.4:.8}"/>`; }
+  NOTES.forEach(n => {
+    const xp = x0 + n.i*dx, xt = xp + n.dev*sc, y = laneY(n.p);
+    if (n.extra){ s += `<circle cx="${xt}" cy="${y}" r="5" fill="${blue}" stroke="${ink}" stroke-width="1.2" stroke-dasharray="2 1.5"/>`; return; }
+    if (n.miss){ s += `<circle cx="${xp}" cy="${y}" r="5" fill="none" stroke="${past}" stroke-width="2"/>`; return; }
+    s += `<circle cx="${xp}" cy="${y}" r="6.2" fill="${past}"/>`;
+    s += `<circle cx="${xt}" cy="${y}" r="4.6" fill="${blue}"/>`;
+  });
+  // 余分・弾き忘れの小さな札
+  const lab = (i, t, dy) => { const n = NOTES[i], x = x0 + i*dx, y = laneY(n.p) + dy; s += `<text x="${x}" y="${y}" text-anchor="middle" font-size="11" font-weight="700" fill="${ink2}">${t}</text>`; };
+  lab(17,'余分',-10); lab(21,'弾き忘れ',-10);
+  // 7 音目の拡大
+  const n7 = NOTES[6], x7 = x0 + 6*dx, y7 = laneY(n7.p);
+  s += `<circle cx="${x7+5}" cy="${y7}" r="11" fill="none" stroke="${ink}" stroke-width="1.5"/>`;
+  s += `<line x1="${x7+5}" y1="${y7-11}" x2="70" y2="46" stroke="${ink}" stroke-width="1.2"/>`;
+  s += `<circle cx="70" cy="30" r="24" fill="${card}" stroke="${ink}" stroke-width="1.5"/>`;
+  s += `<circle cx="58" cy="30" r="9" fill="${past}"/><circle cx="83" cy="30" r="7.5" fill="${blue}"/>`;
+  s += `<text x="104" y="25" font-size="13" font-weight="800" fill="${ink}">7 音目だけ、2 つに割れました</text>`;
+  s += `<text x="104" y="43" font-size="12" font-weight="700" fill="${ink2}">今回が +62ms 遅れ · ほかは重なり</text>`;
+  svg.innerHTML = s;
+}
+function drawBand(){
+  const svg = document.getElementById('band'); const past = css('--past'), blue = css('--blue'), ink2 = css('--ink2'), line = css('--line');
+  const X = ms => 14 + ms/30*302;
+  let s = `<defs><pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="${line}"/><line x1="0" y1="0" x2="0" y2="6" stroke="${past}" stroke-opacity=".45" stroke-width="2"/></pattern></defs>`;
+  s += `<line x1="${X(0)}" x2="${X(30)}" y1="12" y2="12" stroke="${line}" stroke-width="4" stroke-linecap="round"/>`;
+  s += `<rect x="${X(8)}" y="4" width="${X(20)-X(8)}" height="16" rx="8" fill="url(#hatch)"/>`;
+  s += `<line x1="${X(14)}" x2="${X(14)}" y1="1" y2="23" stroke="${past}" stroke-width="3"/>`;
+  s += `<circle cx="${X(13)}" cy="12" r="6.5" fill="${blue}" stroke="${css('--card')}" stroke-width="2"/>`;
+  [0,10,20,30].forEach(v => s += `<text x="${X(v)}" y="33" text-anchor="middle" font-size="10.5" font-weight="700" fill="${ink2}">${v}</text>`);
+  s += `<text x="${(X(8)+X(20))/2}" y="33" text-anchor="middle" font-size="10.5" font-weight="800" fill="${ink2}">帯 ±6ms</text>`;
+  svg.innerHTML = s;
+}
+
+/* ============ 手紙の波形 / 棚 ============ */
+function drawLetterWave(){
+  const svg = document.getElementById('letterWave'); const w = wave(90, 908, .8); let s='';
+  w.forEach((a,i)=>{ const h = 4 + a*36; s += `<rect x="${i*3}" y="${22-h/2}" width="2" height="${h}" rx="1" fill="#8C857A"/>`; });
+  svg.innerHTML = s;
+}
+function drawShelves(){
+  const rows = [
+    {nm:'16分のオルタネイト', sub:'♩=58〜63', n:13, first:0, sel:5},
+    {nm:'F→B♭ の押さえ替え', sub:'♩=60', n:9},
+    {nm:'G→C→D→G のストローク', sub:'♩=72〜80', n:8},
+    {nm:'クロマチック上行', sub:'♩=80', n:5},
+  ];
+  const disc = css('--disc'), rim = css('--discRim'), red = css('--red'), blue = css('--blue'), past = css('--past'), ink = css('--ink'), card = css('--card');
+  let html = '';
+  rows.forEach((r, ri) => {
+    let s = '';
+    const step = Math.min(24, 300/(r.n)), x0 = 30;
+    for (let i=0;i<r.n;i++){
+      const latest = i === r.n-1, isSel = i === r.sel, isFirst = i === r.first;
+      const x = x0 + i*step, y = isSel ? 30 : 40, lc = latest ? blue : (isSel ? red : (isFirst ? '#C9A227' : past));
+      s += `<g><circle cx="${x}" cy="${y}" r="27" fill="${disc}" stroke="${rim === disc ? card : rim}" stroke-width="1.5"/><circle cx="${x}" cy="${y}" r="20" fill="none" stroke="rgba(255,255,255,.07)"/><circle cx="${x}" cy="${y}" r="10" fill="${lc}"/></g>`;
+    }
+    if (r.sel != null){ const x = x0 + r.sel*step; s += `<rect x="${x-26}" y="62" width="52" height="16" rx="8" fill="${red}"/><text x="${x}" y="74" text-anchor="middle" font-size="11" font-weight="800" fill="#FFF8F0">30 日前</text>`; }
+    if (r.first != null){ const x = x0; s += `<rect x="${x-20}" y="62" width="40" height="16" rx="8" fill="${card}" stroke="${ink}" stroke-width="1"/><text x="${x}" y="74" text-anchor="middle" font-size="11" font-weight="800" fill="${ink}">初日</text>`; }
+    html += `<div class="shelfRow"><div class="nm">${r.nm}<small>${r.sub} · 右端が最新</small></div><svg viewBox="0 0 358 78" aria-label="${r.nm} の盤の列">${s}</svg><div class="plank"></div></div>`;
+  });
+  document.getElementById('shelves').innerHTML = html;
+}
+
+/* ============ 音(ボタンを押したときだけ。自動再生しない) ============ */
+let AC = null;
+function ac(){ if (MUTE) return null; if (!AC) AC = new (window.AudioContext||window.webkitAudioContext)(); return AC; }
+const FREQ = [110, 130.81, 146.83, 164.81, 196.0];
+function pluck(ctx, t, f, dur=.35, vol=.18){
+  const o = ctx.createOscillator(), g = ctx.createGain(), lp = ctx.createBiquadFilter();
+  o.type = 'sawtooth'; o.frequency.value = f; lp.type = 'lowpass'; lp.frequency.setValueAtTime(3200, t); lp.frequency.exponentialRampToValueAtTime(500, t+dur);
+  g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t+.004); g.gain.exponentialRampToValueAtTime(.0008, t+dur);
+  o.connect(lp).connect(g).connect(ctx.destination); o.start(t); o.stop(t+dur+.05);
+}
+function bell(ctx, t, f, vol=.12){
+  [1, 2.76, 5.4].forEach((m, j) => { const o = ctx.createOscillator(), g = ctx.createGain(); o.type='sine'; o.frequency.value = f*4*m;
+    const v = vol * [1,.28,.1][j]; g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(v,t+.003); g.gain.exponentialRampToValueAtTime(.0005,t+1.1/(j+1));
+    o.connect(g).connect(ctx.destination); o.start(t); o.stop(t+1.3); });
+}
+function playPluckSeq(sec, gain){ const ctx = ac(); if (!ctx) return; const t0 = ctx.currentTime + .05, n = Math.floor(sec*1000/259);
+  for (let i=0;i<n;i++) pluck(ctx, t0 + i*.259 + (Math.random()*2-1)*.01, FREQ[PAT[i%8]], .3, .14*gain); }
+function playSideBySide(){ const ctx = ac(); if (!ctx) return; const t0 = ctx.currentTime + .05;
+  for (let i=0;i<26;i++){ pluck(ctx, t0 + i*.259 + (Math.random()*2-1)*.012, FREQ[PAT[i%8]], .3, .12); }
+  const t1 = t0 + 26*.259 + .8; NOTES.forEach(n => { if (!n.miss) pluck(ctx, t1 + n.i*.259 + n.dev/1000, FREQ[n.p], .3, .14); }); }
+function playOrgel(){ if (location.hash !== '#celebrate' && location.hash !== '#diag') {}
+  if (location.hash === '#celebrate') runCyl();
+  const ctx = ac(); if (!ctx) return; const t0 = ctx.currentTime + .08, sp = .2;
+  NOTES.forEach(n => { const tb = t0 + n.i*sp; if (!n.extra) bell(ctx, tb, FREQ[n.p]*2, .06); if (!n.miss) bell(ctx, tb + n.dev/1000, FREQ[n.p], .08); }); }
+
+/* ============ 画面切替 ============ */
+function go(name){ if (location.hash !== '#'+name) location.hash = name; else render(); }
+function render(){
+  let name = (location.hash || '#home').slice(1); if (!SCREENS.includes(name)) name = 'home';
+  document.querySelectorAll('.screen').forEach(s => s.classList.toggle('on', s.id === 's-'+name));
+  document.querySelectorAll('#devnav a').forEach(a => a.classList.toggle('on', a.getAttribute('href') === '#'+name));
+  if (name === 'rec') startRec(); else stopRec();
+  if (name === 'celebrate') runCyl(); else cancelAnimationFrame(cylRaf);
+  if (name === 'home') { document.getElementById('homeLabel')._reset(); document.getElementById('homeHint').textContent = MUTE ? '音なしモード: 昨日の音はリングの形だけ' : '聴き終えたら、同じボタンでそのまま弾けます'; }
+  if (name === 'home-gap') document.getElementById('gapLabel')._reset();
+  window.scrollTo(0,0);
+}
+function buildNav(){
+  const nav = document.getElementById('devnav');
+  const withQ = (k,v) => { const q = new URLSearchParams(location.search); if (v==null) q.delete(k); else q.set(k,v); return '?' + q.toString() + location.hash; };
+  nav.innerHTML = SCREENS.map(s => `<a href="#${s}">${NAMES[s]}</a>`).join('') +
+    `<button id="nvTheme">${THEME==='dark'?'☀ ライト':'☾ ダーク'}</button><button id="nvMute">${MUTE?'♪ 音あり':'音なし'}</button>`;
+  document.getElementById('nvTheme').onclick = () => location.href = withQ('theme', THEME==='dark'?null:'dark');
+  document.getElementById('nvMute').onclick = () => location.href = withQ('mute', MUTE?null:'1');
+}
+
+document.querySelectorAll('svg[data-disc]').forEach(s => discSVG(s, s.dataset.disc));
+wireListen('homeLabel','homeDisc',{title:'昨日の音', sub:'9/29 · 8 秒'});
+wireListen('gapLabel','gapDisc',{title:'この前の音', sub:'8 秒'});
+drawStrip(); drawBand(); drawLetterWave(); drawShelves(); buildNav();
+window.addEventListener('hashchange', render);
+render();
+</script>
+</body>
+</html>
