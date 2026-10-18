@@ -36,7 +36,7 @@
 
 | ファイル | 分かったこと(本機能に効く点) |
 |---|---|
-| `guitar_diagnosis_design_doc.md` Appendix A | 不採用は「楽譜 **PDF** → OMR → MIDI」。理由: (1) タブ譜 OMR は研究段階、(2) 五線 OMR は WASM 実装が無くバックエンド新設が必要 = Section 2 と衝突、(3) 修正 UI が必須。「MusicXML→MIDI 変換自体は既存ライブラリで容易(低〜中難易度)」と明記。Appendix C の比較表では G(OMR)を「Section 2 と衝突」で優先度を下げ、A/B/C を「お手本テイクの 3 つの入口」として共存させる方針 |
+| `docs/prd/guitar_diagnosis_design_doc.md` Appendix A | 不採用は「楽譜 **PDF** → OMR → MIDI」。理由: (1) タブ譜 OMR は研究段階、(2) 五線 OMR は WASM 実装が無くバックエンド新設が必要 = Section 2 と衝突、(3) 修正 UI が必須。「MusicXML→MIDI 変換自体は既存ライブラリで容易(低〜中難易度)」と明記。Appendix C の比較表では G(OMR)を「Section 2 と衝突」で優先度を下げ、A/B/C を「お手本テイクの 3 つの入口」として共存させる方針 |
 | `SPEC.md` 1〜3 節 | 基本方針「完全クライアントサイド」「外部の正解データ(曲 DB・タブ譜・コード進行)に依存しない」「スコアは正しさではなく一貫性」。守備範囲: 単音・アルペジオ(間隔 300 ms 以上)、音域 MIDI 40〜88(範囲外は破棄)、和音は音符単位では診断しない。技術: Dexie 4、Basic Pitch、ルーターなしの画面状態管理 |
 | `app/src/db.ts` | `NoteEvent = {pitch, startMs, durationMs, velocity?}`。`Take.role: 'normal'|'reference'`、`sourceType: 'recorded'|'importedAudio'|'importedVideo'|'demo'`、`audioBlob: Blob` は必須、`noteEvents?`、`analysisOffsetMs?`、`metronome?`、`chordEvents?`。Dexie は version 2、`takes` のインデックスは `id, threadId, role, recordedAt`(sourceType は非インデックス) |
 | `app/src/actions.ts` 250〜320 | `setReferenceTakeFromFile`(音声/動画 → transcribe → role 'reference' で追加、既存お手本は `demoteReferenceTake`)、`setReferenceTakeFromExistingTake`、`clearReferenceTake`。`demoteReferenceTake` は `sourceType` が imported* なら削除、そうでなければ 'normal' に戻す。`pickComparisonTarget` は mode 'reference' で `where({threadId, role:'reference'})` を取り、`diagnose(target.noteEvents, take.noteEvents)` を呼ぶだけ(お手本の由来は見ない) |

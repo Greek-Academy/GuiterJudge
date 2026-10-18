@@ -2,7 +2,7 @@
 
 **対象時点**: 2026-09-02（コミット `8d4786c` 時点）
 **対象**: `app/` のプロトタイプ実装（動作するMVP）
-**関連**: [PRD](./guitar_diagnosis_prd.md) / [Design Doc](./guitar_diagnosis_design_doc.md) / [デモ手順](./DEMO.md)
+**関連**: [PRD](./docs/prd/guitar_diagnosis_prd.md) / [Design Doc](./docs/prd/guitar_diagnosis_design_doc.md) / [デモ手順](./DEMO.md)
 
 ## 0. このドキュメントの位置づけ
 

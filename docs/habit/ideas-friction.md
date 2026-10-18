@@ -1,6 +1,6 @@
 # 「毎日開いて練習してくれる」ための GUI・仕組みのアイデア(視点: 練習の実際と、開いてから録音するまでの摩擦)
 
-対象: `/Users/yk/dev/guitar-diagnosis/app`(React 19 + Dexie、ルーター無し、5 画面)。
+対象: `/Users/yk/dev/guitar/app/app`(React 19 + Dexie、ルーター無し、5 画面)。
 前提として押さえた現状:
 
 - 起動は常に一覧(`App.tsx` の `useState<Screen>({ name: 'list' })`)。前回どのスレッドを開いていたかは覚えていない

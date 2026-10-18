@@ -4,7 +4,7 @@ const ReactDOMServer = require('react-dom/server');
 const Fi = require('react-icons/fi');
 const sharp = require('sharp');
 
-const OUT = '/Users/yk/dev/guitar-diagnosis/guitar_diagnosis_midterm_slides.pptx';
+const OUT = require('path').join(__dirname, 'guitar_diagnosis_midterm_slides.pptx');
 const JP = 'Hiragino Sans';
 const C = { walnut: '3A2A21', amber: 'D9822B', ink: '2B2B2B', gray: '6E6E6E', light: 'F2F2F2', white: 'FFFFFF', green: '3F7D58', red: 'C0392B', paleAmber: 'F7E6D3', line: 'CFCFCF', dim: 'B9AEA6', blue: '3D6B9E', paleBlue: 'DCE6F2' };
 

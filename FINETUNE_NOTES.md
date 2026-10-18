@@ -122,7 +122,7 @@ run B が元の最良を上回るのは**低音弦と短い音価**。中高音�
 
 - C-1: onset 損失の強化(無視 3 フレーム、正例 0.9 倍)で較正を 0.7 付近に戻す。閾値を変えずに差し替えられるようになるのが狙い
 - C-2: GuitarSet を 3 割混ぜる(`--datasets gaps,guitarset --weights 0.7,0.3`)でジャンルを広げる
-- どちらも学習 1 時間 + 変換とスイープ 30 分。学習終了後の処理は `~/dev/guitar-data/eval/after-run-b.sh` で自動化済み(パスを変えて流用)
+- どちらも学習 1 時間 + 変換とスイープ 30 分。学習終了後の処理は `~/dev/guitar/data/eval/after-run-b.sh` で自動化済み(パスを変えて流用)
 - B と並行して回せる
 
 ### D. 元モデルのまま、閾値だけ見直す
@@ -274,7 +274,7 @@ GAPS 論文(Riley, Guo, Edwards, Dixon, ISMIR 2024)はベンチマークモデ�
 
 ### 11.3 (a) の実測(2026-09-21 15:30)
 
-ONNX への変換とブラウザ内 ONNX Runtime(WASM)での推論時間を測った。成果物は `~/dev/guitar-data/onnx/`(`guitar-gaps.onnx` 98.7 MB、fp16 49.4 MB、int8 62.4 MB、プローブページ `web/`)。
+ONNX への変換とブラウザ内 ONNX Runtime(WASM)での推論時間を測った。成果物は `~/dev/guitar/data/onnx/`(`guitar-gaps.onnx` 98.7 MB、fp16 49.4 MB、int8 62.4 MB、プローブページ `web/`)。
 
 | 実行環境 | 10 秒セグメント 1 本の推論 |
 |---|---|
@@ -332,13 +332,13 @@ ONNX への変換とブラウザ内 ONNX Runtime(WASM)での推論時間を測�
 
 並行して (c) の最小版(Mac の Python サーバに録音を送る)を入れておくと、蒸留の結果を待たずに「94% で診断がどう変わるか」を実機で体験できる。1 日で入る。
 
-成果物: `~/dev/guitar-data/onnx/`(教師 ONNX、生徒候補 ONNX、`web/` にプローブページ・COOP/COEP サーバ・CDP ドライバ。`node server.mjs 8766` → `node probe.mjs /student-m.onnx mel '[1,1001,229]'`)。生徒の定義はまだ使い捨てのスクリプトなので、段階 2 に入るときに `train/student.py` として置く。
+成果物: `~/dev/guitar/data/onnx/`(教師 ONNX、生徒候補 ONNX、`web/` にプローブページ・COOP/COEP サーバ・CDP ドライバ。`node server.mjs 8766` → `node probe.mjs /student-m.onnx mel '[1,1001,229]'`)。生徒の定義はまだ使い捨てのスクリプトなので、段階 2 に入るときに `train/student.py` として置く。
 
 ## 13. 進捗(2026-09-21 17:00): 段階 1 と (c) の最小版
 
 - **(c) 実装済み**: `train/serve_transcribe.py`(公開モデルの HTTP サーバ、POST /transcribe に float32 PCM)+ `app/src/remoteTranscribe.ts` + `transcribe()` の分岐(URL が設定されていれば Basic Pitch を回さず公開モデルの音符列を使う。音域フィルタは同じ、倍音除外は不要なので掛けない)+ 検証画面の「0. 推論エンジン」で URL を設定・Basic Pitch と並べて表示。
   本番と同じ経路(ヘッドレス Chrome の `transcribe()`)で GAPS 019 を通すと **Basic Pitch F1 74.0 → リモート 95.0**。使い方は `train/README.md`
-- **段階 1 実行中**: `train/distill_labels.py` で GAPS train 270 曲 + GuitarSet 奏者 00〜04 の 300 クリップ × シフト 3 本(0, ±2 半音)。出力 `~/dev/guitar-data/distill/`。教師の onset は正解オンセットの 96%(288/300)を ±20 ms 以内で 0.5 超えで捉えていることを 1 曲で確認
+- **段階 1 実行中**: `train/distill_labels.py` で GAPS train 270 曲 + GuitarSet 奏者 00〜04 の 300 クリップ × シフト 3 本(0, ±2 半音)。出力 `~/dev/guitar/data/distill/`。教師の onset は正解オンセットの 96%(288/300)を ±20 ms 以内で 0.5 超えで捉えていることを 1 曲で確認
 - 次: 段階 2(`train/student.py` + `train/distill.py`、student-m を PyTorch + MPS で蒸留、GAPS test 30 曲で毎エポック採点)
 
 ## 14. 段階 2 のパイロット(2026-09-21 20:15)
@@ -447,11 +447,11 @@ GAPS で採用ラインを超えた。学習は 30 エポックまで継続(11 �
 
 ## 8. 成果物と再現
 
-- 学習結果: `~/dev/guitar-data/runs/gaps-ft/20260920-1613/`(run A)、`gaps-ft-b/20260921-0002/`(run B)、`gaps-ft-c1/20260921-0154/`(C-1)、`gaps-ft-c2/20260921-0314/`(C-2)。いずれも `model.best` / `export` / `tfjs` / `history.csv` / `args.txt`(タイムスタンプは UTC)
-- スイープ結果: `~/dev/guitar-data/eval/results/sweep-{orig,ft,ftb,ftc1,ftc2}-60s-test/`(GAPS。ft = run A、ftb = run B)、`sweep-{orig,ftb,ftc1,ftc2}-gs-test/`(GuitarSet)
-- 公開モデルの出力: `eval/results/hfmt-gaps-60s-test/`、`hfmt-gs-test/`(MIDI + timings.csv)。再実行 `train/.venv-hfmt/bin/python train/eval_hfmt.py`、採点 `node app/eval/midi-score.mjs ~/dev/guitar-data/{gaps,guitarset} <dir>`
-- 比較の再表示: `cd app && node eval/gaps-sweep.mjs ~/dev/guitar-data/gaps ~/dev/guitar-data/eval/results/sweep-{orig,ftb,ftc1,ftc2}-60s-test`、GuitarSet は `node eval/gaps-sweep.mjs ~/dev/guitar-data/guitarset ~/dev/guitar-data/eval/results/sweep-{orig,ftb,ftc1,ftc2}-gs-test`
-- 新しいモデルのスイープ: `~/dev/guitar-data/eval/run-sweep.sh` のモデル名を変えて実行(配信ディレクトリ `eval/serve/model-*` にシンボリックリンクを置く)
+- 学習結果: `~/dev/guitar/data/runs/gaps-ft/20260920-1613/`(run A)、`gaps-ft-b/20260921-0002/`(run B)、`gaps-ft-c1/20260921-0154/`(C-1)、`gaps-ft-c2/20260921-0314/`(C-2)。いずれも `model.best` / `export` / `tfjs` / `history.csv` / `args.txt`(タイムスタンプは UTC)
+- スイープ結果: `~/dev/guitar/data/eval/results/sweep-{orig,ft,ftb,ftc1,ftc2}-60s-test/`(GAPS。ft = run A、ftb = run B)、`sweep-{orig,ftb,ftc1,ftc2}-gs-test/`(GuitarSet)
+- 公開モデルの出力: `eval/results/hfmt-gaps-60s-test/`、`hfmt-gs-test/`(MIDI + timings.csv)。再実行 `train/.venv-hfmt/bin/python train/eval_hfmt.py`、採点 `node app/eval/midi-score.mjs ~/dev/guitar/data/{gaps,guitarset} <dir>`
+- 比較の再表示: `cd app && node eval/gaps-sweep.mjs ~/dev/guitar/data/gaps ~/dev/guitar/data/eval/results/sweep-{orig,ftb,ftc1,ftc2}-60s-test`、GuitarSet は `node eval/gaps-sweep.mjs ~/dev/guitar/data/guitarset ~/dev/guitar/data/eval/results/sweep-{orig,ftb,ftc1,ftc2}-gs-test`
+- 新しいモデルのスイープ: `~/dev/guitar/data/eval/run-sweep.sh` のモデル名を変えて実行(配信ディレクトリ `eval/serve/model-*` にシンボリックリンクを置く)
 - 学習: `train/README.md`。run B の引数は `--onset-pos-weight 0.75 --onset-neighbor-frames 2`、他は README の例のまま
 - データはリポジトリに入れない(GAPS は CC BY-NC-SA 4.0。商用化の予定は無い)
 
@@ -460,7 +460,7 @@ GAPS で採用ラインを超えた。学習は 30 エポックまで継続(11 �
 v2 の学習曲線はエポック 20 以降も学習率 5e-4 のまま上下しながら伸びていた(18 節)。そこで v2 の最終重み(エポック 30、アプリに載せているもの)から、
 学習率を下げて 30 エポック追加学習する。構成・損失・後処理・データは v2 と同じ。
 
-- 初期重み: `~/dev/guitar-data/runs/distill/20260921-1843/model.last.pt`(v2 エポック 30)。optimizer(AdamW)とスケジューラは新規
+- 初期重み: `~/dev/guitar/data/runs/distill/20260921-1843/model.last.pt`(v2 エポック 30)。optimizer(AdamW)とスケジューラは新規
 - 学習率: 初期 2.5e-4(v2 終盤の半分)→ コサイン減衰で 1e-5 まで、30 エポック(10,500 ステップ)。v2 の ReduceLROnPlateau は validation F1 のぶれ(±4 pt)に反応しにくく 11 エポックで 1 回しか下がらなかったので、単調に下がる形にした
 - 正例の重み: 1(素の BCE)。v2 は 2000 ステップで 20 → 1 に下げ終わっているので、再開時に重み付き BCE を掛け直すと較正が崩れる
 - early stopping は v2 と同じ patience 10(validation F1 は 1 エポック単位で ±4 pt ぶれるので、短くしない)
@@ -469,26 +469,26 @@ v2 の学習曲線はエポック 20 以降も学習率 5e-4 のまま上下し�
 
 **動作確認**(`--limit-steps 30`): `init:` 行の GAPS test F1 90.1 @ (0.3, 0.8) が 18 節の eval_student.py の値と一致。30 ステップ後も 89.8 で崩れない。
 
-**コマンド**(`~/dev/guitar-data/distill/run-v3.sh`、`nohup ... > ~/dev/guitar-data/distill/full-run-v3.log 2>&1 &`):
+**コマンド**(`~/dev/guitar/data/distill/run-v3.sh`、`nohup ... > ~/dev/guitar/data/distill/full-run-v3.log 2>&1 &`):
 
 ```sh
-cd ~/dev/guitar-diagnosis/train
+cd ~/dev/guitar/app/train
 .venv-hfmt/bin/python distill.py --preset m --steps 350 --batch 16 --epochs 30 --patience 10 --workers 3 \
-  --init ~/dev/guitar-data/runs/distill/20260921-1843/model.last.pt \
+  --init ~/dev/guitar/data/runs/distill/20260921-1843/model.last.pt \
   --lr 2.5e-4 --sched cosine --lr-min 1e-5 \
   --pos-weight-onset 1 --pos-weight-frame 1 --pos-weight-anneal 0 \
-  --out ~/dev/guitar-data/runs/distill-v3
+  --out ~/dev/guitar/data/runs/distill-v3
 ```
 
-- ログ: `~/dev/guitar-data/distill/full-run-v3.log`。出力: `~/dev/guitar-data/runs/distill-v3/<UTC タイムスタンプ>/{args.json, history.csv, model.best.pt, model.last.pt, student.onnx}`(v2 の `runs/distill/` は触らない)
+- ログ: `~/dev/guitar/data/distill/full-run-v3.log`。出力: `~/dev/guitar/data/runs/distill-v3/<UTC タイムスタンプ>/{args.json, history.csv, model.best.pt, model.last.pt, student.onnx}`(v2 の `runs/distill/` は触らない)
 - 所要時間: 1 エポック 12 分(v2 実測 714 秒)× 30 = 約 6 時間。開始 16:37 → 終了は 23 時前後の見込み(早期終了すれば手前)
 
-**終了後の手順**(v2 の `finalize.sh` と同じ流れ。`R=$(ls -d ~/dev/guitar-data/runs/distill-v3/2*/ | tail -1)`):
+**終了後の手順**(v2 の `finalize.sh` と同じ流れ。`R=$(ls -d ~/dev/guitar/data/runs/distill-v3/2*/ | tail -1)`):
 
 1. Python 採点: `cd train && .venv-hfmt/bin/python eval_student.py $R --ckpt model.last.pt` と `--ckpt model.best.pt`。GAPS test / GuitarSet test の「最良」行を 18 節(90.1 / 88.2、best 90.3 / 88.5)と比べる。両方で上回らなければ差し替えない。ONNX は `$R/model.{last,best}.onnx` に書かれる
 2. 差し替え: `cp $R/model.last.onnx app/public/student/model.onnx`(best を採るなら model.best.onnx)。戻すのは `git checkout app/public/student/model.onnx`
-3. 本番経路の採点(ヘッドレス Chrome、`~/dev/guitar-data/distill/finalize.sh` の後半と同じ): `cd app` で harness を組み直してから
-   `node eval/gaps-drive.mjs ~/dev/guitar-data/gaps <結果dir> 60 0 --split=test --engine=student` → `node eval/gaps-notes.mjs ~/dev/guitar-data/gaps <結果dir> 60`、
+3. 本番経路の採点(ヘッドレス Chrome、`~/dev/guitar/data/distill/finalize.sh` の後半と同じ): `cd app` で harness を組み直してから
+   `node eval/gaps-drive.mjs ~/dev/guitar/data/gaps <結果dir> 60 0 --split=test --engine=student` → `node eval/gaps-notes.mjs ~/dev/guitar/data/gaps <結果dir> 60`、
    GuitarSet は `--dataset=guitarset --engine=student` で同様。18 節の 90.2 / 87.9 と比べる
 4. 結果を本ノートに追記し、`app/public/student/model.onnx` をコミットする
 
@@ -500,7 +500,7 @@ validation F1 はエポック 1〜15 を通じて 80.5〜81.6 の幅を行き来
 そのため patience 10 は「頭打ち」を判定したというより、ぶれの中で最初に出た高値(エポック 5)を超えられなかっただけと見られる。
 コサイン減衰は途中で止まり、学習率は 1.4e-4 までしか下がっていない(予定は 1e-5)。
 
-**Python 側の採点**(`eval_student.py`、先頭 60 秒、±50ms。ログ `~/dev/guitar-data/distill/eval-v3-{last,best}.log`。最良は 4 通りすべてで onset 0.3 / ゲート 0.8 なので、`app/src/student/postprocess.ts` の固定閾値はそのままでよい):
+**Python 側の採点**(`eval_student.py`、先頭 60 秒、±50ms。ログ `~/dev/guitar/data/distill/eval-v3-{last,best}.log`。最良は 4 通りすべてで onset 0.3 / ゲート 0.8 なので、`app/src/student/postprocess.ts` の固定閾値はそのままでよい):
 
 | 重み | GAPS test 30 曲 P / R / **F1** | GuitarSet test 60 P / R / **F1** | ストローク / 単音 |
 |---|---|---|---|
@@ -509,7 +509,7 @@ validation F1 はエポック 1〜15 を通じて 80.5〜81.6 の幅を行き来
 | v2 エポック 30(これまでの採用) | 95.5 / 85.3 / 90.1 | 94.1 / 83.1 / 88.2 | 86.5 / 92.9 |
 | v2 エポック 29 | 94.9 / 86.0 / 90.3 | 92.8 / 84.6 / 88.5 | 87.0 / 92.9 |
 
-**本番経路**(ヘッドレス Chrome、`transcribe()` → 音域フィルタ → 分割統合。harness は作業中の app/src を拾わないように HEAD 4641afd の worktree でビルドした。結果 `~/dev/guitar-data/eval/results/student-v3-{60s,gs}-test/`):
+**本番経路**(ヘッドレス Chrome、`transcribe()` → 音域フィルタ → 分割統合。harness は作業中の app/src を拾わないように HEAD 4641afd の worktree でビルドした。結果 `~/dev/guitar/data/eval/results/student-v3-{60s,gs}-test/`):
 
 | | P | R | **F1**(v3 last) | v2 last | Basic Pitch | 教師 |
 |---|---|---|---|---|---|---|

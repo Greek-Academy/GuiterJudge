@@ -1,6 +1,6 @@
 # 毎日開かせるための GUI・仕組みアイデア(視点: 習慣化・行動科学)
 
-対象: `/Users/yk/dev/guitar-diagnosis` ギター練習 PWA
+対象: `/Users/yk/dev/guitar/app` ギター練習 PWA
 作成: 2026-09-23
 
 ## 前提として読み取ったこと

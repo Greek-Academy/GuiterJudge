@@ -25,9 +25,9 @@ P3(`tempo-normalization.md`)までの検証は、楽譜由来のお手本に**�
 
 ## 1. 方法
 
-- **データ**: GAPS test 30 曲(`~/dev/guitar-data/gaps/`、CC BY-NC-SA のためリポジトリには入れない)。楽譜 `musicxml/<id>.xml` は
+- **データ**: GAPS test 30 曲(`~/dev/guitar/data/gaps/`、CC BY-NC-SA のためリポジトリには入れない)。楽譜 `musicxml/<id>.xml` は
   `app/src/score` の `convertMusicXml`(反復は展開)で変換。演奏側は、正解アラインメント MIDI `midi/<id>.mid` と、生徒 v3 の本番経路の起こし
-  `~/dev/guitar-data/eval/results/student-v3-60s-test/<id>.json`(`noteEvents` + `analysisOffsetMs` で MIDI と同じ時間軸。先頭 60 秒のみ)。
+  `~/dev/guitar/data/eval/results/student-v3-60s-test/<id>.json`(`noteEvents` + `analysisOffsetMs` で MIDI と同じ時間軸。先頭 60 秒のみ)。
 - **区間**: 冒頭 N 小節(N = 2, 4, 8, 16)を `sliceMeasures(conv, 0, N−1)` で切り出す。演奏側の同区間は `syncpoints/<id>.json`
   (演奏順の小節番号 → 演奏時刻。反復展開後の小節インデックスと一致することを確認した)の第 0 小節頭〜第 N 小節頭(両端 −80ms)で切る。
   60 秒を超える区間、楽譜と正解 MIDI の対応が 6 割未満の区間(楽譜と演奏の版違い)は除いた(120 区間中 14 区間)。

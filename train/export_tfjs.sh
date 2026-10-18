@@ -4,7 +4,7 @@
 # tensorflowjs は TensorFlow のバージョンを自分で固定するので、学習用とは別の venv に入れる。
 #
 #   bash train/export_tfjs.sh <run>/export <出力ディレクトリ>
-#   例: bash train/export_tfjs.sh ~/dev/guitar-data/runs/gaps-ft/20260920-1200/export ~/dev/guitar-data/runs/gaps-ft/20260920-1200/tfjs
+#   例: bash train/export_tfjs.sh ~/dev/guitar/data/runs/gaps-ft/20260920-1200/export ~/dev/guitar/data/runs/gaps-ft/20260920-1200/tfjs
 #
 # 差し替え: cp <出力>/model.json <出力>/group1-shard1of1.bin app/public/model/  (元のモデルは git に残っているので戻せる)
 set -euo pipefail
