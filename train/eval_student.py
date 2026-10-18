@@ -10,7 +10,8 @@ sys.argv_backup = sys.argv[:]; sys.argv = [sys.argv[0]]
 import importlib.util
 spec = importlib.util.spec_from_file_location("distill", os.path.join(os.path.dirname(__file__), "distill.py")); d = importlib.util.module_from_spec(spec); spec.loader.exec_module(d)
 sys.argv = sys.argv_backup
-H = os.path.expanduser("~"); D = f"{H}/dev/guitar/data"
+from paths import data_dir
+H = os.path.expanduser("~"); D = data_dir()
 ap = argparse.ArgumentParser(); ap.add_argument("run"); ap.add_argument("--ckpt", default="model.last.pt"); ap.add_argument("--preset", default="m"); ap.add_argument("--crop", type=float, default=60)
 args = ap.parse_args()
 torch.set_num_threads(4); d.dev = torch.device("cpu")

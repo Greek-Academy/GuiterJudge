@@ -19,7 +19,8 @@ from datetime import datetime, timezone
 import numpy as np, soundfile as sf, soxr, torch, torch.nn.functional as F
 from student import Frontend, build, SR, FPS, HOP, N_FFT
 
-H = os.path.expanduser("~"); D = f"{H}/dev/guitar/data"
+from paths import data_dir
+H = os.path.expanduser("~"); D = data_dir()
 SEG_FRAMES = 1001; SEG_SAMPLES = 160000
 
 # log-mel を CPU で計算する(torchlibrosa の Frontend と最大差 3e-5 で一致、10 秒 × 4 本で 36 ms)。

@@ -15,7 +15,8 @@ import numpy as np, soundfile as sf, soxr, torch
 from hf_midi_transcription import MidiTranscriptionModel
 import piano_transcription_inference.inference as inf
 
-H = os.path.expanduser("~"); D = f"{H}/dev/guitar/data"
+from paths import data_dir
+H = os.path.expanduser("~"); D = data_dir()
 SR = 16000; FPS = 100
 ap = argparse.ArgumentParser(); ap.add_argument("--shifts", default="0,-2,2"); ap.add_argument("--device", default="cpu"); ap.add_argument("--only", default="")
 args = ap.parse_args(); SHIFTS = [int(s) for s in args.shifts.split(",")]

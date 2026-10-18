@@ -14,6 +14,9 @@
 #   LIMIT=3 bash app/eval/fetch-datasets.sh gaps-meta
 set -u
 
+if [ -z "${DATA_DIR:-}" ] && [ ! -d "$HOME/dev/guitar/data" ] && [ -d "$HOME/dev/guitar-data" ]; then
+  DATA_DIR="$HOME/dev/guitar-data"   # まだ ~/dev/guitar/ に移していない
+fi
 DATA_DIR="${DATA_DIR:-$HOME/dev/guitar/data}"
 LIMIT="${LIMIT:-0}"
 CURL=(curl -L -C - --retry 30 --retry-all-errors --retry-delay 5 --speed-time 60 --speed-limit 1000 -sS)

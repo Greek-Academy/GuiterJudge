@@ -1,6 +1,6 @@
 # ギター上達診断アプリ 上流プラン(ロードマップ案、2026-09-23 時点)
 
-対象期間: 2026-09 下旬〜2027-03(3〜6 か月)。根拠: PRD、Design Doc(2 節、Appendix A / C)、SPEC(2・10・11・13 節)、MIDTERM_NOTES、DEMO(5・6 節)、FINETUNE_NOTES(11〜20 節)、docs/habit/competition-result.md、docs/score-import/*、git log。
+対象期間: 2026-09 下旬〜2027-03(3〜6 か月)。根拠: PRD(docs/prd/)、Design Doc(docs/prd/、2 節、Appendix A / C)、SPEC(2・10・11・13 節)、MIDTERM_NOTES(docs/midterm/)、DEMO(5・6 節)、FINETUNE_NOTES(11〜20 節)、docs/habit/competition-result.md、docs/score-import/*、git log。
 工数の数字はすべて**推測**(1 人日 = 集中作業 6 時間程度)。精度の数字は FINETUNE_NOTES / SPEC の実測値。
 
 ---
