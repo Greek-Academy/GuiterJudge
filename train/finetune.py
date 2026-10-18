@@ -5,7 +5,7 @@
 (basic_pitch/saved_models/icassp_2022/nmp)を Keras モデルとして読み、同じ損失・同じデータローダで学習を続ける。
 データは prepare_gaps.py が作った TFRecord(<data>/gaps/splits/{train,validation}/)。
 
-    python train/finetune.py --data ~/dev/guitar-data/tfrecords --out ~/dev/guitar-data/runs/gaps-ft \
+    python train/finetune.py --data ~/dev/guitar/data/tfrecords --out ~/dev/guitar/data/runs/gaps-ft \
         --epochs 60 --steps-per-epoch 200 --batch-size 16 --lr 1e-4
 
 学習後は <out>/<timestamp>/model.best(SavedModel)と <out>/<timestamp>/export(TF.js 変換用に出力名を揃えた SavedModel)ができる。

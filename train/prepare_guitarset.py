@@ -5,11 +5,11 @@ GAPS だけで追加学習するとクラシックギターに寄りすぎてス
 混ぜて学習する選択肢のために用意した(公式の学習データにも GuitarSet は入っている)。
 正解の作り方は公式の GuitarSet アダプタと同じ(notes_all → notes / onsets、contours は multif0 の代わりに notes_all)。
 
-    python train/prepare_guitarset.py --guitarset ~/dev/guitar-data/guitarset --out ~/dev/guitar-data/tfrecords
+    python train/prepare_guitarset.py --guitarset ~/dev/guitar/data/guitarset --out ~/dev/guitar/data/tfrecords
 
 mirdata の GuitarSet ローダは audio_mono-mic/ というディレクトリ名を期待するので、
 fetch-datasets.sh が作る audio/ へのシンボリックリンクを張っておく:
-    ln -s ~/dev/guitar-data/guitarset/audio ~/dev/guitar-data/guitarset/audio_mono-mic
+    cd ~/dev/guitar/data/guitarset && ln -s audio audio_mono-mic   # 相対リンクにしておくと、フォルダを動かしても切れない
 
 分割は奏者で切る(00〜03 train、04 validation、05 test)。同じ譜面を別の奏者が弾いた曲が split をまたぐが、
 音源としては別演奏なので、曲単位のランダム分割より漏れが少ない。

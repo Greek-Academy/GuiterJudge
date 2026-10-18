@@ -1,16 +1,16 @@
 // ヘッドレス Chrome 上で本番と同じ transcribe()(Basic Pitch / TF.js)を回すための入口。
 // window.__transcribe(url, cropSec) と window.__transcribeSweep(...) を公開し、eval/gaps-drive.mjs が CDP 経由で呼ぶ。
 //
-// 手順(SERVE は作業用ディレクトリ。実際に使っているのは ~/dev/guitar-data/eval/serve):
+// 手順(SERVE は作業用ディレクトリ。実際に使っているのは ~/dev/guitar/data/eval/serve):
 //   node_modules/.bin/rolldown eval/gaps-harness.ts --platform browser --format esm --file $SERVE/harness.js
 //   sed -i '' 's#import\.meta\.env\.BASE_URL#"/"#g' $SERVE/harness.js       # Vite の定数を rolldown は解決しない
 //   echo '<!doctype html><script type="module" src="/harness.js"></script>' > $SERVE/index.html
-//   ln -s $PWD/public/model $SERVE/model && ln -s ~/dev/guitar-data/gaps/audio $SERVE/audio
+//   ln -s $PWD/public/model $SERVE/model && ln -s ~/dev/guitar/data/gaps/audio $SERVE/audio
 //   (cd $SERVE && python3 -m http.server 8765 --bind 127.0.0.1 &)
 //   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --remote-debugging-port=9333 \
 //       --user-data-dir=$SERVE/profile --use-angle=swiftshader --enable-unsafe-swiftshader about:blank &
-//   node eval/gaps-drive.mjs ~/dev/guitar-data/gaps $RESULTS 60 --split=test   # 各曲先頭60秒(0で全長)。60秒あたり推論13秒
-//   node eval/gaps-notes.mjs ~/dev/guitar-data/gaps $RESULTS 60                # MIDI と照合して採点
+//   node eval/gaps-drive.mjs ~/dev/guitar/data/gaps $RESULTS 60 --split=test   # 各曲先頭60秒(0で全長)。60秒あたり推論13秒
+//   node eval/gaps-notes.mjs ~/dev/guitar/data/gaps $RESULTS 60                # MIDI と照合して採点
 //   閾値スイープ: drive に --sweep を付けると推論1回で閾値グリッドぶんの音符列を保存し、gaps-sweep.mjs で採点する
 import { transcribe, runModel, extractNotes } from '../src/basicPitch'
 import { preprocessForAnalysis } from '../src/preprocess'

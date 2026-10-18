@@ -9,7 +9,7 @@ Basic Pitch 公式の data パイプラインは Apache Beam + mirdata + sox 前
 
 正解の作り方は公式の MAESTRO アダプタと同じ(MIDI のノートから notes / onsets、contours もノートで代用)。
 
-    python train/prepare_gaps.py --gaps ~/dev/guitar-data/gaps --out ~/dev/guitar-data/tfrecords [--splits train,validation,test]
+    python train/prepare_gaps.py --gaps ~/dev/guitar/data/gaps --out ~/dev/guitar/data/tfrecords [--splits train,validation,test]
 
 validation は GAPS の train split から曲 ID のハッシュで決定的に切り出す(既定 20 曲)。
 test は GAPS の test split そのまま(評価にだけ使い、学習・early stopping には触れさせない)。

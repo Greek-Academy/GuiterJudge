@@ -8,13 +8,16 @@
 #   bash app/eval/fetch-datasets.sh guitarduets   # GuitarDuets (3.5GB)  CC BY 4.0
 #   bash app/eval/fetch-datasets.sh all           # 上の全部(gaps-all を含む)
 #
-# 置き場所は DATA_DIR で変えられる(既定 ~/dev/guitar-data)。リポジトリには入れない。
-#   DATA_DIR=/Volumes/ext/guitar-data bash app/eval/fetch-datasets.sh gaps-test
+# 置き場所は DATA_DIR で変えられる(既定 ~/dev/guitar/data)。リポジトリには入れない。
+#   DATA_DIR=/Volumes/ext/guitar/data bash app/eval/fetch-datasets.sh gaps-test
 # 動作確認だけしたいときは LIMIT で1カテゴリあたりのファイル数を絞れる:
 #   LIMIT=3 bash app/eval/fetch-datasets.sh gaps-meta
 set -u
 
-DATA_DIR="${DATA_DIR:-$HOME/dev/guitar-data}"
+if [ -z "${DATA_DIR:-}" ] && [ ! -d "$HOME/dev/guitar/data" ] && [ -d "$HOME/dev/guitar-data" ]; then
+  DATA_DIR="$HOME/dev/guitar-data"   # まだ ~/dev/guitar/ に移していない
+fi
+DATA_DIR="${DATA_DIR:-$HOME/dev/guitar/data}"
 LIMIT="${LIMIT:-0}"
 CURL=(curl -L -C - --retry 30 --retry-all-errors --retry-delay 5 --speed-time 60 --speed-limit 1000 -sS)
 

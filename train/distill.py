@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """蒸留の段階 2: distill_labels.py が作った npz(教師の onset / frame、正解音符、16 kHz 音声)で生徒を学習する。
 
-    train/.venv-hfmt/bin/python train/distill.py --preset m --out ~/dev/guitar-data/runs/distill [--epochs 60 --steps 500 --batch 16 --lr 1e-3]
+    train/.venv-hfmt/bin/python train/distill.py --preset m --out ~/dev/guitar/data/runs/distill [--epochs 60 --steps 500 --batch 16 --lr 1e-3]
 
 - 10 秒(1001 フレーム)をランダムに切り出す。データセットの混合比は GAPS 0.7 : GuitarSet 0.3(ファイル単位)
 - 損失 = BCE(生徒, 教師の onset) + BCE(生徒, 教師の frame) + λ·[BCE(生徒 onset, 正解の三角ターゲット) + BCE(生徒 frame, 正解ロール)]
@@ -19,7 +19,8 @@ from datetime import datetime, timezone
 import numpy as np, soundfile as sf, soxr, torch, torch.nn.functional as F
 from student import Frontend, build, SR, FPS, HOP, N_FFT
 
-H = os.path.expanduser("~"); D = f"{H}/dev/guitar-data"
+from paths import data_dir
+H = os.path.expanduser("~"); D = data_dir()
 SEG_FRAMES = 1001; SEG_SAMPLES = 160000
 
 # log-mel を CPU で計算する(torchlibrosa の Frontend と最大差 3e-5 で一致、10 秒 × 4 本で 36 ms)。

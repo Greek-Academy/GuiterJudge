@@ -1,7 +1,7 @@
 # 楽譜 PDF → お手本(NoteEvent[])取り込みの実現性調査メモ
 
 日付: 2026-09-23 / 対象: guitar-diagnosis(完全クライアントサイド PWA、バックエンド無し)
-作業物: このディレクトリ(scratchpad/omr/)。venv・モデル・Audiveris 本体は `~/dev/guitar-data/omr/` に置いた。リポジトリのファイルは変更していない。
+作業物: このディレクトリ(scratchpad/omr/)。venv・モデル・Audiveris 本体は `~/dev/guitar/data/omr/` に置いた。リポジトリのファイルは変更していない。
 
 ## TL;DR
 
@@ -137,12 +137,12 @@ TAB についての結論: **6 線 + 数字を読んでリズム付きの音符�
 
 - `gen_scores.py` テスト譜(MusicXML)と正解 JSON の生成 → `mscore -o x.pdf x.musicxml`
 - `vector_pdf_probe.py <pdf> <ground_truth.json>` ベクター PDF からの音高・TAB 抽出(案 E のプローブ)
-- `run_audiveris.sh <name> [opts] -- <input>` Audiveris 5.11 バッチ実行(`~/dev/guitar-data/omr/audiveris/extract/…/Audiveris.app` の同梱 JRE を使用)
+- `run_audiveris.sh <name> [opts] -- <input>` Audiveris 5.11 バッチ実行(`~/dev/guitar/data/omr/audiveris/extract/…/Audiveris.app` の同梱 JRE を使用)
 - `run_oemer_cpu.py` oemer を CPU provider 固定 + numpy 2 shim で実行
 - `run_omr_batch.sh` homr → oemer の順次実行
 - `eval_omr.py`(正解 JSON と比較)、`eval_midi.py`・`eval_measures.py`(MIDI 正解と比較)
 - 出力: `audiveris_out/*/`(.mxl・.omr・ログ)、`homr_out/`(.musicxml・teaser.png)、`oemer_out/`
-- 容量の大きいもの: `~/dev/guitar-data/omr/venv`(oemer, music21, pymupdf)、`venv-homr`(homr + torch CPU、約 700 MB)、`ckpt/`(oemer ONNX 約 200 MB)、`audiveris/`(dmg 85 MB + 展開物)
+- 容量の大きいもの: `~/dev/guitar/data/omr/venv`(oemer, music21, pymupdf)、`venv-homr`(homr + torch CPU、約 700 MB)、`ckpt/`(oemer ONNX 約 200 MB)、`audiveris/`(dmg 85 MB + 展開物)
 
 ## 7. 参考(2026-09-23 閲覧)
 

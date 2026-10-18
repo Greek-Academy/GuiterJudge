@@ -7,7 +7,7 @@ GAPS train(tfrecords の validation 9 曲は validation に回す)と GuitarSet 
 
     train/.venv-hfmt/bin/python train/distill_labels.py [--shifts 0,-2,2] [--device cpu] [--only gaps|guitarset]
 
-出力: ~/dev/guitar-data/distill/<dataset>/<split>/<id>_s<shift>.npz。既にあるものは飛ばす(再開可)。
+出力: ~/dev/guitar/data/distill/<dataset>/<split>/<id>_s<shift>.npz。既にあるものは飛ばす(再開可)。
 所要: 教師は実時間の約 0.045 倍なので、15.5 時間 × シフト数 × 0.045 ≈ 42 分/シフト。
 """
 import argparse, csv, glob, json, os, re, time
@@ -15,7 +15,8 @@ import numpy as np, soundfile as sf, soxr, torch
 from hf_midi_transcription import MidiTranscriptionModel
 import piano_transcription_inference.inference as inf
 
-H = os.path.expanduser("~"); D = f"{H}/dev/guitar-data"
+from paths import data_dir
+H = os.path.expanduser("~"); D = data_dir()
 SR = 16000; FPS = 100
 ap = argparse.ArgumentParser(); ap.add_argument("--shifts", default="0,-2,2"); ap.add_argument("--device", default="cpu"); ap.add_argument("--only", default="")
 args = ap.parse_args(); SHIFTS = [int(s) for s in args.shifts.split(",")]

@@ -1,6 +1,6 @@
 # ギター上達診断アプリ (プロトタイプ)
 
-`../guitar_diagnosis_prd.md` / `../guitar_diagnosis_design_doc.md` に基づいて実装した、
+`../docs/prd/guitar_diagnosis_prd.md` / `../docs/prd/guitar_diagnosis_design_doc.md` に基づいて実装した、
 動作するプロトタイプ。DesignDoc Section 2-6 の構成をそのままコードに落とし込んでいる。
 
 ## 動かし方
@@ -82,7 +82,7 @@ npm run preview
 ## 実機検証でまだ確認できていないこと
 
 - 実際のギター録音(クラシックギター)での音符起こし精度(「期待する音符列」を入れた本測定が未実施)
-- スマホのブラウザでの推論速度・メモリ使用量(`../basic_pitch_browser_test.html`で先に確認することを推奨)
+- スマホのブラウザでの推論速度・メモリ使用量(`../docs/prd/basic_pitch_browser_test.html`で先に確認することを推奨)
 - `tf.memory()`による正しいメモリ計測(`performance.memory`ではGPU上のテンソルが見えない)
 
 ## ビルド実測値(参考)

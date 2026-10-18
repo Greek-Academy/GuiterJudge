@@ -8,7 +8,7 @@
 //  - フォントは1種類に固定
 const pptxgen = require('pptxgenjs');
 
-const OUT = '/Users/yk/dev/guitar-diagnosis/guitar_diagnosis_midterm_slides_plain.pptx';
+const OUT = require('path').join(__dirname, 'guitar_diagnosis_midterm_slides_plain.pptx');
 const FONT = 'Hiragino Sans';
 const ACCENT = '1F4E5F';   // 唯一のアクセント色
 const INK = '222222';

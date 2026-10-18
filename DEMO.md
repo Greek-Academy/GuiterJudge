@@ -2,7 +2,7 @@
 
 **対象**: ギター上達診断アプリ（`app/`）
 **想定**: 2026-09-16頃の中間発表、5〜8分のデモ
-**関連**: [guitar_diagnosis_prd.md](./guitar_diagnosis_prd.md) / [guitar_diagnosis_design_doc.md](./guitar_diagnosis_design_doc.md)
+**関連**: [guitar_diagnosis_prd.md](./docs/prd/guitar_diagnosis_prd.md) / [guitar_diagnosis_design_doc.md](./docs/prd/guitar_diagnosis_design_doc.md)
 
 ---
 
@@ -24,7 +24,7 @@
 ## 1. 事前準備（発表の前日までに済ませておく）
 
 ```sh
-cd /Users/yk/dev/guitar-diagnosis/app
+cd /Users/yk/dev/guitar/app/app
 npm install
 npm run build
 npm run preview

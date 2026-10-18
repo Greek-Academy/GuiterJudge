@@ -84,7 +84,7 @@
 
 ### 実録音: GAPS test 30 曲(先頭 60 秒、`proto/gaps-regress.ts`)
 
-同じ演奏の 3 つの採譜 — 正解 MIDI(gt)、公開モデルの採譜(hfmt、`~/dev/guitar-data/eval/results/hfmt-gaps-60s-test`)、
+同じ演奏の 3 つの採譜 — 正解 MIDI(gt)、公開モデルの採譜(hfmt、`~/dev/guitar/data/eval/results/hfmt-gaps-60s-test`)、
 蒸留モデルの採譜(student、`student-final-60s-test`)— を「別テイク」と見なして `diagnose()` に通した。テンポ差 0、採譜誤差だけが違う 90 組。
 
 | 条件 | 変化した組 | 対応数の差(平均 / 最大) | ジッタの差 ms(平均 / 最大) |

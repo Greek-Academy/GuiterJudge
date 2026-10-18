@@ -1,6 +1,6 @@
 # 「毎日開いてもらう」アイデアコンペ 審査結果と実装計画
 
-対象: `/Users/yk/dev/guitar-diagnosis/app`(React 19 + Dexie v2、ルーター無し、コミット 57ebd48 時点)
+対象: `/Users/yk/dev/guitar/app/app`(React 19 + Dexie v2、ルーター無し、コミット 57ebd48 時点)
 入力: ideas-habit.md(12 案)/ ideas-games.md(12 案)/ ideas-friction.md(13 案)= 37 案
 審査日: 2026-09-23
 

@@ -25,10 +25,10 @@ pip install "tensorflow==2.15.1" "tensorflow-metal==1.1.0" "basic-pitch==0.4.0" 
 
 ## データ
 
-`app/eval/fetch-datasets.sh gaps-all` で `~/dev/guitar-data/gaps/` に音声 404 本と MIDI。
+`app/eval/fetch-datasets.sh gaps-all` で `~/dev/guitar/data/gaps/` に音声 404 本と MIDI。
 
 ```sh
-python prepare_gaps.py --gaps ~/dev/guitar-data/gaps --out ~/dev/guitar-data/tfrecords
+python prepare_gaps.py --gaps ~/dev/guitar/data/gaps --out ~/dev/guitar/data/tfrecords
 ```
 
 - GAPS の train split(270 曲)から曲 ID のハッシュで 20 曲を validation に切り出す。test split(30 曲)は学習にも early stopping にも使わない
@@ -40,7 +40,7 @@ python prepare_gaps.py --gaps ~/dev/guitar-data/gaps --out ~/dev/guitar-data/tfr
 ## 学習
 
 ```sh
-python finetune.py --data ~/dev/guitar-data/tfrecords --out ~/dev/guitar-data/runs/gaps-ft \
+python finetune.py --data ~/dev/guitar/data/tfrecords --out ~/dev/guitar/data/runs/gaps-ft \
     --epochs 60 --steps-per-epoch 200 --batch-size 16 --lr 1e-4
 ```
 
@@ -54,7 +54,7 @@ python finetune.py --data ~/dev/guitar-data/tfrecords --out ~/dev/guitar-data/ru
 ## TF.js への変換と差し替え
 
 ```sh
-bash export_tfjs.sh ~/dev/guitar-data/runs/gaps-ft/<timestamp>/export ~/dev/guitar-data/runs/gaps-ft/<timestamp>/tfjs
+bash export_tfjs.sh ~/dev/guitar/data/runs/gaps-ft/<timestamp>/export ~/dev/guitar/data/runs/gaps-ft/<timestamp>/tfjs
 ```
 
 `@spotify/basic-pitch` は出力テンソルを名前で読む(`Identity` = contour、`Identity_1` = note、`Identity_2` = onset)。
@@ -91,8 +91,8 @@ http の LAN アドレスではスマホの録音が動かない。`@vitejs/plug
 ## 蒸留(公開モデル → ブラウザで動く 4 MB の生徒)
 
 ```sh
-.venv-hfmt/bin/python distill_labels.py --shifts 0,-2,2                 # 段階 1: 教師のソフトラベル(~/dev/guitar-data/distill/、8.7 GB、単独で約 4 時間)
-.venv-hfmt/bin/python distill.py --preset m --steps 350 --epochs 30      # 段階 2: 学習(MPS、約 8 時間)。出力 ~/dev/guitar-data/runs/distill/<timestamp>/
+.venv-hfmt/bin/python distill_labels.py --shifts 0,-2,2                 # 段階 1: 教師のソフトラベル(~/dev/guitar/data/distill/、8.7 GB、単独で約 4 時間)
+.venv-hfmt/bin/python distill.py --preset m --steps 350 --epochs 30      # 段階 2: 学習(MPS、約 8 時間)。出力 ~/dev/guitar/data/runs/distill/<timestamp>/
 .venv-hfmt/bin/python eval_student.py <run-dir> --ckpt model.last.pt    # GAPS / GuitarSet test を広い閾値グリッドで採点し ONNX を書く
 cp <run-dir>/model.last.onnx ../app/public/student/model.onnx           # アプリに載せる(ブラウザ側は app/src/student/)
 ```
@@ -104,7 +104,7 @@ cp <run-dir>/model.last.onnx ../app/public/student/model.onnx           # アプ
 ### 段階 1 の詳細
 
 ```sh
-.venv-hfmt/bin/python distill_labels.py --shifts 0,-2,2      # ~/dev/guitar-data/distill/<dataset>/<split>/<id>_s<shift>.npz
+.venv-hfmt/bin/python distill_labels.py --shifts 0,-2,2      # ~/dev/guitar/data/distill/<dataset>/<split>/<id>_s<shift>.npz
 ```
 
 GAPS train(tfrecords の validation 9 曲は validation)と GuitarSet 奏者 00〜03(04 は validation)に教師をかけ、onset / frame(100 fps × 88、uint8)、

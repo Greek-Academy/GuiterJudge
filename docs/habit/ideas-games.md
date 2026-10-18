@@ -1,6 +1,6 @@
 # 毎日開いてもらうための仕掛け(競合アプリ・ゲームデザインからの転用)
 
-対象: `/Users/yk/dev/guitar-diagnosis` のギター練習 PWA
+対象: `/Users/yk/dev/guitar/app` のギター練習 PWA
 視点: Duolingo / Yousician / Anki / Strava / リングフィット / 音ゲー / ローグライク の継続装置を、
 「ソロ・オフライン・正解データ無し・スコアは一貫性指標」という制約の中で翻案する。
 

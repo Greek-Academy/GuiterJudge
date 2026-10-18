@@ -4,7 +4,7 @@
 
 | 置き場所 | 内容 | 出典 | ライセンス |
 |---|---|---|---|
-| `~/dev/guitar-data/gaps/musicxml/*.xml`(404 本) | クラシックギター独奏曲の楽譜。Soundslice MusicXML exporter 出力。五線(P1、`<transpose><chromatic>-12`)+ TAB(P2)の 2 パート | GAPS(Guitar-Aligned Performance Scores)v1.1、Riley et al. 2024、Zenodo / Hugging Face | Zenodo 版 CC BY-NC-SA 4.0(HF カードは MIT 表記)。ローカル検証のみに使用 |
+| `~/dev/guitar/data/gaps/musicxml/*.xml`(404 本) | クラシックギター独奏曲の楽譜。Soundslice MusicXML exporter 出力。五線(P1、`<transpose><chromatic>-12`)+ TAB(P2)の 2 パート | GAPS(Guitar-Aligned Performance Scores)v1.1、Riley et al. 2024、Zenodo / Hugging Face | Zenodo 版 CC BY-NC-SA 4.0(HF カードは MIT 表記)。ローカル検証のみに使用 |
 | `oracle/030_rpswc.xml`(Oblivion / Piazzolla 編曲) | 上記のコピー。MuseScore Studio 4.7.5 で `.mid` / `.mxl` / MuseScore 流 `.musicxml` に変換して正解データにした | 同上 | 同上 |
 | `oracle/071_QV1wc.xml` / `081_cf1wc.xml` / `134_LD1wc.xml` / `049_Fc1wc.xml` | 反復+volta+装飾音+連符 / 開始無しタイ+フェルマータ / ドロップ D+タイ多数+arpeggiate / 拍子変更 20 回+テンポ変更 20 回+休符フェルマータ、をそれぞれ含む曲。MuseScore で `.mid` 化 | 同上 | 同上 |
 | `oracle/tab4-ms4.musicxml` | MuseScore 0.7 のテストファイル testTablature4.xml を MuseScore 4.7.5 で再書き出ししたもの(MuseScore 4 ネイティブの連結五線+TAB 書き出し慣習の確認用) | MuseScore リポジトリ | GPL-3.0(テストデータ) |
