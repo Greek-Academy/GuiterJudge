@@ -12,10 +12,11 @@
 -
 
 ## 確認
-- [ ] `npm run build` / `npm run lint`:
-- [ ] `npm run test:score`(楽譜まわり):
-- [ ] セルフレビュー(`/code-review high`): 何件中何件対応(対応しなかったものと理由)
+- [ ] `cd app && npm run build` / `npm run lint`:
+- [ ] `cd app && npm run test:score`(楽譜まわり):
+- [ ] セルフレビュー: 何件中何件対応(対応しなかったものと理由)
 - [ ] 画面: スクリーンショットを見せて OK をもらった
 - [ ] 採譜のモデル: GAPS・GuitarSet の F1 を変更前と比べた
 
+<!-- Issue があれば番号を入れる。閉じない関連 Issue は Refs #。なければ次の行を消す -->
 Closes #
